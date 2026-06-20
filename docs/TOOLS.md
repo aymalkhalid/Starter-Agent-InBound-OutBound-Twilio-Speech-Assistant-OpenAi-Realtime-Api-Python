@@ -6,8 +6,25 @@ Built-in tools are registered in `services/openai_service.py` and listed dynamic
 
 | Tool | Purpose |
 | --- | --- |
-| `wait_for_user` | End turn silently on silence, hold music, or non-addressed speech |
+| `wait_for_user` | End the turn silently when audio does not need a reply (silence, hold music, TV, side conversation, speech not addressed to the agent) |
 | `end_call` | Hang up when the caller explicitly ends the conversation |
+
+### `wait_for_user` (silence and background audio)
+
+Follows the [OpenAI Realtime guide](./references/openai-realtime-models-prompting.md#handle-silence-and-background-audio): the model calls this no-op tool instead of speaking filler such as “I'm here” or “I didn't catch that.”
+
+**When to use (prompt):** non-addressed audio — silence, background noise, hold music, TV, side conversation.
+
+**When not to use:** the caller is clearly speaking to the agent but the content is garbled; ask one clarification instead (`# Unclear Audio` in the prompt).
+
+**Server behavior** (`services/openai_service.py`, wired in `main.py`):
+
+1. Returns tool output with `trigger_response=False` so no follow-up spoken turn is created.
+2. Suppresses assistant audio as soon as the streaming tool call names `wait_for_user`.
+3. Truncates and clears any filler audio already sent to Twilio (`finalize_wait_for_user`).
+4. Logs `wait_for_user` events and increments `connection_manager.state.wait_for_user_count` per call.
+
+VAD settings (`VAD_MODE`, `VAD_THRESHOLD`, etc.) reduce spurious turns from noise but do not replace `wait_for_user`. See [Configuration](./CONFIGURATION.md#voice-activity-detection-vad).
 
 ## Conditional tools
 

@@ -5,7 +5,7 @@ Docs for the Twilio + OpenAI Realtime starter. Agent behavior is defined in `pro
 ## Guides
 
 - [Architecture](./ARCHITECTURE.md)
-- [Configuration](./CONFIGURATION.md) — prompt placeholders, language/accent, reasoning effort
+- [Configuration](./CONFIGURATION.md) — prompt placeholders, language/accent, reasoning effort, VAD, silence handling
 - [Realtime Tools](./TOOLS.md)
 - [Cloud Run Deploy](./DEPLOY_CLOUD_RUN.md)
 

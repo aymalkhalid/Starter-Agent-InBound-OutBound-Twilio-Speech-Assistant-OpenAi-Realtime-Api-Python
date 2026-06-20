@@ -16,7 +16,7 @@ This is a clean Twilio + OpenAI Realtime voice-agent starter.
 
 - Change agent behavior in `prompts/main_system_instructions.md` when possible.
 - Change language, accent, reasoning effort, and feature-specific prompt text via `config.py` builders and `.env`.
-- Keep tool schemas and side-effect handlers in `services/openai_service.py`.
+- Keep tool schemas and side-effect handlers in `services/openai_service.py`. `wait_for_user` is a no-op tool for silence/background audio — handler must stay silent (`trigger_response=False`); see `docs/TOOLS.md`.
 - Keep booking logic in `services/google_calendar_booking_service.py`.
 - Use `services/call_records_service.py` as the app-facing storage facade; keep low-level webhook/Supabase compatibility mapping in `services/webhook_service.py`.
 - Add tests when changing prompt rendering, tool registration, booking, dashboard APIs, or storage payloads.

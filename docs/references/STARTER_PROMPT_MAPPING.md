@@ -19,6 +19,7 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | Preambles | `# Preambles` | OpenAI-aligned when/when-not/style; mapped to slow tools |
 | Verbosity | `# Verbosity` | Task-type length rules with booking comparison example |
 | Handling silence | `# Handling Silence and Background Noise` | Uses `wait_for_user` per OpenAI pattern |
+| Unclear audio | `# Unclear Audio` | Clarify when addressed but unintelligible; not `wait_for_user` |
 | Entity Capture | `# Entity Capture` + collection order, spelled-out chars, spoken numbers, confirmation, workflow | Full OpenAI exact-entity pattern for phone, email, slots |
 | Instruction precision | `# Instruction Precision` | Avoid literal traps; scoped rules over broad must/always |
 | Tools | `# Tools`, `{tools_availability_instruction}`, dynamic blocks | Eagerness, read/write rules, failure recovery |
@@ -28,8 +29,11 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 
 | Guide recommendation | Where in starter |
 | --- | --- |
-| `wait_for_user` no-op tool | `services/openai_service.py` |
-| Tool availability sync | Tools registered per session in `openai_service.py`; prompt uses `{booking_instruction}` etc. |
+| `wait_for_user` no-op tool | `services/openai_service.py` — always registered |
+| Silent tool completion (no `response.create`) | `OpenAIService._send_tool_result(..., trigger_response=False)` |
+| Suppress/truncate filler before `wait_for_user` | `main.py` + `OpenAIService.finalize_wait_for_user()` |
+| Per-call wait telemetry | `Log.event("wait_for_user")`, `state.wait_for_user_count` |
+| Tool availability sync | Tools registered per session in `openai_service.py`; prompt uses `{tools_availability_instruction}` and feature blocks |
 | Preamble sample phrases on slow tools | `services/openai_service.py` tool descriptions |
 | Structured tool validation failures | `OpenAIService._format_tool_failure_output()` JSON envelope |
 | Write-action confirmation | Prompt: confirm before side-effect tools |

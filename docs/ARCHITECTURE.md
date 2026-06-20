@@ -8,6 +8,17 @@
 4. `OpenAIService` sends `Config.SYSTEM_MESSAGE` plus tool schemas to OpenAI Realtime.
 5. Twilio audio frames and OpenAI audio deltas are bridged until the call ends.
 
+### Non-addressed audio (`wait_for_user`)
+
+When the model decides incoming audio does not need a reply:
+
+1. It calls `wait_for_user` (tool schema in `openai_service.py`).
+2. The handler completes the tool silently (`trigger_response=False`).
+3. `main.py` may truncate/clear assistant filler audio and suppress further deltas for that turn.
+4. Normal responses resume when the caller clearly addresses the agent again.
+
+See [Realtime Tools](./TOOLS.md#wait_for_user-silence-and-background-audio).
+
 ## Main Modules
 
 - `main.py`: HTTP/WebSocket routes and Twilio orchestration.

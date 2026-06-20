@@ -41,6 +41,41 @@ Change wording in the markdown file when possible. Change env vars when behavior
 
 Reference: [Starter prompt ↔ guide mapping](./references/STARTER_PROMPT_MAPPING.md)
 
+## Silence, background audio, and unclear speech
+
+The prompt separates two cases (see `# Handling Silence and Background Noise` and `# Unclear Audio`):
+
+| Caller audio | Model action |
+| --- | --- |
+| Not addressed to the agent (silence, hold music, TV, side talk) | Call `wait_for_user` — no spoken reply |
+| Clearly addressed but ambiguous, noisy, or cut off | One brief clarification question — do not call `wait_for_user` |
+
+Runtime support lives in `services/openai_service.py` and `main.py`: silent tool completion, audio suppression/truncation, and per-call `wait_for_user_count` logging. Details: [Realtime Tools](./TOOLS.md#wait_for_user-silence-and-background-audio).
+
+## Voice activity detection (VAD)
+
+VAD controls when OpenAI ends a user turn. It complements — but does not replace — `wait_for_user`.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `VAD_MODE` | `server_vad` | `server_vad` (silence-based) or `semantic_vad` (content-based; often better in noisy environments) |
+| `VAD_EAGERNESS` | `auto` | For `semantic_vad` only: `low`, `medium`, `high`, or `auto` |
+| `VAD_THRESHOLD` | `0.6` | For `server_vad` only: higher = less sensitive to background noise (0–1) |
+| `VAD_SILENCE_DURATION_MS` | `600` | For `server_vad` only: ms of silence before speech is considered stopped |
+| `VAD_PREFIX_PADDING_MS` | `300` | Audio captured before detected speech start |
+| `VAD_DEBOUNCE_AFTER_OUTGOING_MS` | `1200` | Ignore `speech_started` briefly after assistant audio (reduces echo triggers) |
+| `VAD_INTERRUPTION_CONFIRM_MS` | `0` | Wait this many ms before truncating on interruption; `0` = immediate |
+
+Example for a noisy phone line:
+
+```env
+VAD_MODE=semantic_vad
+VAD_EAGERNESS=low
+VAD_THRESHOLD=0.65
+```
+
+VAD can also be tuned from the dashboard Settings panel when Supabase is enabled.
+
 ## Core Env
 
 | Variable | Default | Notes |
