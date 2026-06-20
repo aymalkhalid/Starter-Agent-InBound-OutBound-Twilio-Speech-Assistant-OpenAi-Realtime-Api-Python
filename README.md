@@ -42,6 +42,8 @@ Point your Twilio Voice webhook to:
 https://YOUR_HOST/incoming-call
 ```
 
+Full checklist (MVP → optional features): [docs/ONBOARDING.md](./docs/ONBOARDING.md)
+
 ## Customize The Agent
 
 **Prompt (behavior):** edit `prompts/main_system_instructions.md`  
@@ -71,6 +73,8 @@ Full configuration: [docs/CONFIGURATION.md](./docs/CONFIGURATION.md)
 The core phone agent runs without Supabase. Set `CALL_RECORD_BACKEND=supabase` and
 Supabase credentials to enable `/dashboard`, `/calls`, recordings, transcripts,
 notes, and statuses.
+
+Docs: [docs/ONBOARDING.md](./docs/ONBOARDING.md) · Diagrams: [docs/DIAGRAMS.md](./docs/DIAGRAMS.md) (23 sections)
 
 The default table is `call_records`. Older `leads` tables remain supported by setting
 `SUPABASE_CALL_RECORD_TABLE=leads` during migration.

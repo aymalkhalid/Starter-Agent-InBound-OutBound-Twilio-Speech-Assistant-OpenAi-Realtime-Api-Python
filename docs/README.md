@@ -4,7 +4,9 @@ Docs for the Twilio + OpenAI Realtime starter. Agent behavior is defined in `pro
 
 ## Guides
 
+- [Onboarding](./ONBOARDING.md) — one-page clone → live agent checklist
 - [Architecture](./ARCHITECTURE.md)
+- [Diagrams](./DIAGRAMS.md) — Mermaid flows (23 sections); index at top
 - [Configuration](./CONFIGURATION.md) — prompt placeholders, language/accent, reasoning effort, VAD, silence handling
 - [Realtime Tools](./TOOLS.md)
 - [Cloud Run Deploy](./DEPLOY_CLOUD_RUN.md)

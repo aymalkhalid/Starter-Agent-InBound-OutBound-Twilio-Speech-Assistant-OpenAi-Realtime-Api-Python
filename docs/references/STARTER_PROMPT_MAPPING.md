@@ -4,7 +4,8 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 
 **Live prompt:** `prompts/main_system_instructions.md`  
 **Tool schemas:** `services/openai_service.py`  
-**Runtime config:** `config.py`, `.env`
+**Runtime config:** `config.py`, `.env`  
+**Architecture diagrams:** [DIAGRAMS.md](../DIAGRAMS.md) §22 (prompt map), [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 ## Current coverage
 

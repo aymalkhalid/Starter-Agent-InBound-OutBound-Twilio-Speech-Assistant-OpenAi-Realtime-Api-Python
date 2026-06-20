@@ -39,3 +39,7 @@ See [Realtime Tools](./TOOLS.md#wait_for_user-silence-and-background-audio).
 4. For `gpt-realtime-2`, `REALTIME_REASONING_EFFORT` is also set on the session payload.
 
 See [Configuration](./CONFIGURATION.md) and [Starter prompt mapping](./references/STARTER_PROMPT_MAPPING.md).
+
+## Diagrams
+
+Visual flows live in [Diagrams](./DIAGRAMS.md) (23 sections, indexed). Quick start: [Onboarding](./ONBOARDING.md). Interactive canvas: `canvases/voice-agent-architecture.canvas.tsx` in the Cursor project folder.

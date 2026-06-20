@@ -53,4 +53,4 @@ Slow or external tools include **preamble sample phrases** in their descriptions
 
 Exact values matter for booking and records: use ISO slot times from `get_availability`, confirm phone/email before writes, and recover from failures without repeating identical failed calls.
 
-Future external tools should register through `services/tool_registry.py`.
+Future external tools register through `services/tool_registry.py` and load via `services/mcp_adapter.py` (disabled no-op in v1). See [Diagrams §23](./DIAGRAMS.md#23-external-tools-scaffold-mcp--tool-registry).
