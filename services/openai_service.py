@@ -71,7 +71,7 @@ def _is_placeholder_phone(s: str) -> bool:
     return "caller" in t and ("number" in t or "phone" in t)
 
 
-_KNOWN_PROMPT_EXAMPLE_PHONE_DIGITS = {"2185953061"}
+_KNOWN_PROMPT_EXAMPLE_PHONE_DIGITS = {"5555550101"}
 
 _CALLER_PHONE_CONTEXT_PHRASES = (
     "number they are calling from",

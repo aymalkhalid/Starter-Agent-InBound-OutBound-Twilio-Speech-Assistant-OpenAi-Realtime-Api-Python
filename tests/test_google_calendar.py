@@ -52,8 +52,8 @@ def main():
 
 def test_phone_display_for_calendar_us():
     """US numbers show as (XXX) XXX-XXXX in calendar description helper."""
-    assert gcs._phone_display_for_calendar("+1 (218) 555-1234") == "(218) 555-1234"
-    assert gcs._phone_display_for_calendar("2185551234") == "(218) 555-1234"
+    assert gcs._phone_display_for_calendar("+1 (555) 555-1234") == "(555) 555-1234"
+    assert gcs._phone_display_for_calendar("5555551234") == "(555) 555-1234"
     assert gcs._phone_display_for_calendar("") == "—"
 
 
@@ -61,7 +61,7 @@ def test_parse_booking_description_for_reschedule():
     """Reschedule path can recover email, notes, and service type from our booking template."""
     desc = gcs._build_booking_calendar_description(
         contact_name="Jane",
-        contact_phone="+12185551234",
+        contact_phone="+15555551234",
         contact_email="j@example.com",
         visit_summary="Deep clean",
         when_local_display="Mon at 9 AM",
@@ -89,7 +89,7 @@ def test_build_booking_calendar_summary_and_description():
     assert "Co" in s2 and "Bob" in s2
     desc = gcs._build_booking_calendar_description(
         contact_name="Jane",
-        contact_phone="+12185551234",
+        contact_phone="+15555551234",
         contact_email="j@example.com",
         visit_summary="Move-out clean",
         when_local_display="Mon Jan 1 at 9:00 AM",
@@ -99,11 +99,11 @@ def test_build_booking_calendar_summary_and_description():
         company="Acme",
         category_display="cleaning",
     )
-    assert "Jane" in desc and "(218) 555-1234" in desc and "j@example.com" in desc
+    assert "Jane" in desc and "(555) 555-1234" in desc and "j@example.com" in desc
     assert "Move-out" in desc and "America/Chicago" in desc and "60 minutes" in desc
     desc2 = gcs._build_booking_calendar_description(
         contact_name="Jane",
-        contact_phone="2185551234",
+        contact_phone="5555551234",
         contact_email=None,
         visit_summary=None,
         when_local_display="Tue 2 PM",
@@ -119,14 +119,14 @@ def test_build_booking_calendar_summary_and_description():
 
 def test_normalize_phone_us_canonical():
     """E.164 +1 and formatted US number must normalize to same 10 digits so list_my_bookings finds events."""
-    assert _normalize_phone("+12185953061") == "2185953061"
-    assert _normalize_phone("218-595-3061") == "2185953061"
-    assert _normalize_phone("+12185953061") == _normalize_phone("218-595-3061")
-    assert _normalize_phone("1-218-595-3061") == "2185953061"
+    assert _normalize_phone("+15555550101") == "5555550101"
+    assert _normalize_phone("555-555-0101") == "5555550101"
+    assert _normalize_phone("+15555550101") == _normalize_phone("555-555-0101")
+    assert _normalize_phone("1-555-555-0101") == "5555550101"
     # Non-US 11 digits: keep as-is (no leading 1)
     assert _normalize_phone("44123456789") == "44123456789"
     # 10 digits unchanged
-    assert _normalize_phone("2185953061") == "2185953061"
+    assert _normalize_phone("5555550101") == "5555550101"
 
 
 def test_list_my_bookings_empty_phone():
@@ -141,7 +141,7 @@ def test_list_my_bookings_returns_context_for_disambiguation(monkeypatch):
     """list_my_bookings should expose stored caller name and visit notes for exact-booking clarification."""
     description = gcs._build_booking_calendar_description(
         contact_name="Amel",
-        contact_phone="+12185953061",
+        contact_phone="+15555550101",
         contact_email=None,
         visit_summary="Standard residential cleaning",
         when_local_display="Mon Apr 20 at 08:00 AM",
@@ -160,14 +160,14 @@ def test_list_my_bookings_returns_context_for_disambiguation(monkeypatch):
         "end": {"dateTime": "2026-04-20T16:00:00Z"},
         "extendedProperties": {
             "private": {
-                "caller_phone": "2185953061",
+                "caller_phone": "5555550101",
                 "caller_name": "Amel",
             }
         },
     }
     monkeypatch.setattr(gcs, "_get_calendar_service", lambda: (_FakeCalendarService([item]), "calendar_id"))
 
-    out = list_my_bookings("+12185953061", "Emil")
+    out = list_my_bookings("+15555550101", "Emil")
 
     assert len(out) == 1
     assert out[0]["event_id"] == "evt_morning_1"
@@ -423,7 +423,7 @@ def test_find_conflicting_event_ignores_event_id():
     assert conflict is None
 
 
-def run_list_my_bookings_test(contact_phone: str = "218-595-3061", contact_name: str | None = "Emil"):
+def run_list_my_bookings_test(contact_phone: str = "555-555-0101", contact_name: str | None = "Emil"):
     """Call list_my_bookings with given phone/name and print result (same as model call from logs)."""
     print(f"list_my_bookings(contact_phone={contact_phone!r}, contact_name={contact_name!r})")
     if not is_booking_enabled():
@@ -460,7 +460,7 @@ def run_edge_case_tests():
 
 if __name__ == "__main__":
     main()
-    print("\n--- list_my_bookings test (218-595-3061, Emil) ---")
-    run_list_my_bookings_test("218-595-3061", "Emil")
+    print("\n--- list_my_bookings test (555-555-0101, Emil) ---")
+    run_list_my_bookings_test("555-555-0101", "Emil")
     print("\nRunning edge-case tests...")
     run_edge_case_tests()

@@ -181,8 +181,8 @@ def _slot_duration_minutes() -> int:
 def _normalize_phone(phone: str) -> str:
     """
     Canonical form for ownership: digits only. Used for caller_phone on events and for list/edit/delete matching.
-    US numbers: E.164 +12185953061 and formatted 218-595-3061 must match; we normalize 11-digit (1+10) to 10 digits
-    so both become 2185953061 and list_my_bookings finds events created with either form.
+    US numbers: E.164 +15555550101 and formatted 555-555-0101 must match; we normalize 11-digit (1+10) to 10 digits
+    so both become 5555550101 and list_my_bookings finds events created with either form.
     """
     if not phone or not isinstance(phone, str):
         return ""

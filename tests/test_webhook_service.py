@@ -29,7 +29,7 @@ def test_handoff_payload_to_supabase_updates_filters_nulls():
         "priority": "routine",
         "contact": {
             "name": "Emil",
-            "phone": "+12185953061",
+            "phone": "+15555550101",
             "email": "",
         },
         "issue_summary": "Cancellation request",
@@ -48,7 +48,7 @@ def test_handoff_payload_to_supabase_updates_filters_nulls():
     updates = handoff_payload_to_supabase_updates(payload)
 
     assert updates["lead_name"] == "Emil"
-    assert updates["lead_phone"] == "+12185953061"
+    assert updates["lead_phone"] == "+15555550101"
     assert updates["call_sid"] == "CA_followup_1"
     assert "confirmed_slot" not in updates
     assert "calendar_event_link" not in updates
@@ -196,7 +196,7 @@ def test_sync_business_lead_after_booking_action_tracks_multiple_active_appointm
         action="booked",
         call_sid="CA_existing",
         event_id="evt_new",
-        contact_phone="+12185953061",
+        contact_phone="+15555550101",
         confirmed_slot={"display": "Mon Apr 20 at 01:00 PM", "start": "2026-04-20T18:00:00Z"},
         calendar_event_link="https://calendar.google.com/event?eid=evt_new",
         appointment_summary="Office cleaning",
@@ -268,7 +268,7 @@ def test_sync_business_lead_after_booking_action_follow_up_synthesizes_summaries
         action="rescheduled",
         call_sid="CA_followup",
         event_id="evt_moveout",
-        contact_phone="+12185953061",
+        contact_phone="+15555550101",
         confirmed_slot={"display": "Mon Apr 20 at 09:00 PM", "start": "2026-04-21T04:00:00Z"},
         note="Caller requested reschedule. Appointment moved to Mon Apr 20 at 09:00 PM.",
     )
@@ -346,7 +346,7 @@ def test_update_business_lead_from_payload_sync_keeps_backend_synthesized_follow
             "priority": "routine",
             "contact": {
                 "name": "Emeril",
-                "phone": "+12185953061",
+                "phone": "+15555550101",
                 "email": "",
             },
             "issue_summary": "Cancellation request",

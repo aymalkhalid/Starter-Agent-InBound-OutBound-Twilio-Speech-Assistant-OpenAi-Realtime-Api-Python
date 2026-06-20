@@ -315,13 +315,13 @@ def test_submit_lead_validation_corrects_phone_when_context_says_calling_number(
     """If the tool text says callback from the calling number, caller_phone is source of truth."""
     service = OpenAIService()
     connection_manager = _DummyConnectionManager(call_sid=None)
-    connection_manager.state.caller_phone_number = "+12185953862"
+    connection_manager.state.caller_phone_number = "+15555550102"
 
     ok, normalized, err = service._normalize_and_validate_tool_args(
         "submit_lead",
         {
             "contact_name": "Nano Party",
-            "contact_phone": "218-595-3062",
+            "contact_phone": "555-555-0199",
             "issue_summary": "Caller preferred human callback.",
             "priority": "routine",
             "call_summary": "Caller requested a callback from the number they are calling from.",
@@ -331,20 +331,20 @@ def test_submit_lead_validation_corrects_phone_when_context_says_calling_number(
 
     assert ok is True
     assert err is None
-    assert normalized["contact_phone"] == "+12185953862"
+    assert normalized["contact_phone"] == "+15555550102"
 
 
 def test_submit_lead_validation_corrects_known_prompt_example_phone():
     """A copied prompt-example phone should not beat the Twilio caller_phone."""
     service = OpenAIService()
     connection_manager = _DummyConnectionManager(call_sid=None)
-    connection_manager.state.caller_phone_number = "+12185953862"
+    connection_manager.state.caller_phone_number = "+15555550102"
 
     ok, normalized, err = service._normalize_and_validate_tool_args(
         "submit_lead",
         {
             "contact_name": "Nano Party",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "issue_summary": "Caller preferred human callback.",
             "priority": "routine",
             "call_summary": "Caller asked to speak with a team member instead of the voice agent.",
@@ -354,20 +354,20 @@ def test_submit_lead_validation_corrects_known_prompt_example_phone():
 
     assert ok is True
     assert err is None
-    assert normalized["contact_phone"] == "+12185953862"
+    assert normalized["contact_phone"] == "+15555550102"
 
 
 def test_submit_lead_validation_preserves_explicit_alternate_callback_number():
     """A caller-provided different callback number should not be overwritten."""
     service = OpenAIService()
     connection_manager = _DummyConnectionManager(call_sid=None)
-    connection_manager.state.caller_phone_number = "+12185953862"
+    connection_manager.state.caller_phone_number = "+15555550102"
 
     ok, normalized, err = service._normalize_and_validate_tool_args(
         "submit_lead",
         {
             "contact_name": "Nano Party",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "issue_summary": "Caller preferred human callback.",
             "priority": "routine",
             "call_summary": "Caller provided a different number for the callback.",
@@ -377,7 +377,7 @@ def test_submit_lead_validation_preserves_explicit_alternate_callback_number():
 
     assert ok is True
     assert err is None
-    assert normalized["contact_phone"] == "218-595-3061"
+    assert normalized["contact_phone"] == "555-555-0101"
 
 
 def test_list_my_bookings_includes_summary_for_disambiguation(monkeypatch):
@@ -402,7 +402,7 @@ def test_list_my_bookings_includes_summary_for_disambiguation(monkeypatch):
     tool_call = {
         "name": "list_my_bookings",
         "arguments": {
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "contact_name": "Emil",
         },
         "call_id": "call_list_summary_1",
@@ -450,7 +450,7 @@ def test_list_my_bookings_ranks_best_candidate_from_booking_hint(monkeypatch):
     tool_call = {
         "name": "list_my_bookings",
         "arguments": {
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "contact_name": "Emil",
             "booking_hint": "8 AM standard residential cleaning",
         },
@@ -497,7 +497,7 @@ def test_list_my_bookings_requests_clarification_when_no_strong_match(monkeypatc
     tool_call = {
         "name": "list_my_bookings",
         "arguments": {
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
         },
         "call_id": "call_ranked_list_2",
     }
@@ -538,7 +538,7 @@ def test_list_my_bookings_uses_fuzzy_name_variant_as_soft_signal(monkeypatch):
     tool_call = {
         "name": "list_my_bookings",
         "arguments": {
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "contact_name": "Aymal",
         },
         "call_id": "call_ranked_list_fuzzy_1",
@@ -643,7 +643,7 @@ def test_book_appointment_writes_on_first_call_without_confirm_flag(monkeypatch)
         "arguments": {
             "slot_start_iso": "2026-04-17T15:00:00Z",
             "contact_name": "Zeb",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "summary": "Deep cleaning appointment",
         },
         "call_id": "call_book_stage_1",
@@ -684,7 +684,7 @@ def test_book_appointment_optional_confirm_exact_slot_still_writes(monkeypatch):
         "arguments": {
             "slot_start_iso": "2026-04-17T15:00:00Z",
             "contact_name": "Zeb",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "summary": "Deep cleaning appointment",
             "confirm_exact_slot": True,
         },
@@ -726,7 +726,7 @@ def test_book_appointment_second_call_writes_again(monkeypatch):
         "arguments": {
             "slot_start_iso": "2026-04-17T15:00:00Z",
             "contact_name": "Zeb",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "summary": "Deep cleaning appointment",
             "confirm_exact_slot": True,
         },
@@ -737,7 +737,7 @@ def test_book_appointment_second_call_writes_again(monkeypatch):
         "arguments": {
             "slot_start_iso": "2026-04-17T15:00:00Z",
             "contact_name": "Zeb",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "summary": "Deep cleaning appointment",
             "confirm_exact_slot": True,
         },
@@ -784,7 +784,7 @@ def test_book_appointment_success_syncs_business_record(monkeypatch):
         "arguments": {
             "slot_start_iso": "2026-04-17T15:00:00Z",
             "contact_name": "Zeb",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "summary": "Deep cleaning appointment",
         },
         "call_id": "call_book_business_sync",
@@ -800,7 +800,7 @@ def test_book_appointment_success_syncs_business_record(monkeypatch):
             "action": "booked",
             "call_sid": "CA_book_sync",
             "event_id": "evt_book_sync",
-            "contact_phone": "218-595-3061",
+            "contact_phone": "555-555-0101",
             "confirmed_slot": {"display": "Fri Apr 17 at 08:00 AM"},
             "calendar_event_link": "https://calendar.google.com/event?eid=evt_book_sync",
             "appointment_summary": "Deep cleaning appointment",
@@ -833,7 +833,7 @@ def test_delete_booking_success_clears_stored_booking_fields(monkeypatch):
         "name": "delete_booking",
         "arguments": {
             "event_id": "evt_delete_1",
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "contact_name": "Emil",
         },
         "call_id": "call_delete_sync_1",
@@ -849,7 +849,7 @@ def test_delete_booking_success_clears_stored_booking_fields(monkeypatch):
             "action": "cancelled",
             "call_sid": "CA_delete_sync",
             "event_id": "evt_delete_1",
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "confirmed_slot": None,
             "calendar_event_link": None,
             "note": "Caller requested cancellation of appointment. Confirmed cancelled.",
@@ -895,7 +895,7 @@ def test_edit_booking_success_updates_stored_confirmed_slot(monkeypatch):
         "arguments": {
             "event_id": "evt_edit_1",
             "new_slot_start_iso": "2026-04-21T18:00:00Z",
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "contact_name": "Emil",
         },
         "call_id": "call_edit_sync_1",
@@ -911,7 +911,7 @@ def test_edit_booking_success_updates_stored_confirmed_slot(monkeypatch):
             "action": "rescheduled",
             "call_sid": "CA_edit_sync",
             "event_id": "evt_edit_1",
-            "contact_phone": "+12185953061",
+            "contact_phone": "+15555550101",
             "confirmed_slot": confirmed_slot,
             "note": "Caller requested reschedule. Appointment moved to Tue Apr 21 at 01:00 PM.",
         }
@@ -927,7 +927,7 @@ def test_submit_lead_updates_resolved_business_row_instead_of_inserting(monkeypa
     """When a booking-management call already resolved a business row, submit_lead should update it."""
     service = OpenAIService()
     connection_manager = _DummyConnectionManager(call_sid="CA_followup_sync")
-    connection_manager.state.caller_phone_number = "+12185953061"
+    connection_manager.state.caller_phone_number = "+15555550101"
     connection_manager.state.resolved_call_record_id = "lead_business_42"
     connection_manager.state.resolved_business_lead_id = "lead_business_42"
     deliver_calls = []
@@ -974,7 +974,7 @@ def test_submit_lead_updates_resolved_business_row_instead_of_inserting(monkeypa
     assert len(update_calls) == 1
     assert update_calls[0][0] == "lead_business_42"
     assert update_calls[0][1]["call_sid"] == "CA_followup_sync"
-    assert update_calls[0][1]["contact"]["phone"] == "+12185953061"
+    assert update_calls[0][1]["contact"]["phone"] == "+15555550101"
     assert connection_manager.state.lead_submitted is True
     outputs = _tool_outputs(connection_manager)
     assert any("Call record updated with the latest call details." in o for o in outputs)
