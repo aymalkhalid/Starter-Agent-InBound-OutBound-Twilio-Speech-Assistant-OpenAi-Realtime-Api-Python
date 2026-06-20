@@ -1,29 +1,52 @@
-# Voice Agent Starter - Twilio + OpenAI Realtime
+# OpenAI Realtime + Twilio Voice Agent Starter
 
-A clean Python/FastAPI starter for phone-based voice agents using Twilio Voice
-Media Streams and OpenAI Realtime.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-The starter is intentionally generic: one editable system-instructions file,
-tool definitions in code, optional integrations through environment variables,
-and no legacy industry/profile YAML layer.
+Production-ready **Python/FastAPI** starter for inbound and outbound **phone AI agents**. [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) bridge live caller audio to the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime); you customize behavior in one markdown prompt and wire side effects through Python tool handlers.
 
-## What It Includes
+**Repository:** [github.com/aymalkhalid/Twilio-speech-assistant-openai-realtime-api-python](https://github.com/aymalkhalid/Twilio-speech-assistant-openai-realtime-api-python)
 
-- Twilio Media Streams to OpenAI Realtime audio bridge
-- Realtime voice selection, VAD, interruption handling, and session renewal
-- Silence/background-audio handling via `wait_for_user` (OpenAI Realtime pattern)
-- Editable main prompt at `prompts/main_system_instructions.md` (OpenAI Realtime 2-aligned)
-- `wait_for_user`, `save_call_record`, booking, transfer, and end-call tool handling
-- Optional Supabase-backed dashboard for call records
-- Optional call recording, playback proxy, and transcript generation
-- Optional Google Calendar booking tools
-- Optional outbound calling campaigns
-- Disabled-by-default MCP/tool adapter scaffold
-- Google Cloud Run deployment script
+---
 
-## Quick Start
+## Features
+
+### Core (works with `OPENAI_API_KEY` only)
+
+- Twilio ↔ OpenAI Realtime audio bridge over WebSocket
+- Voice selection, VAD, barge-in, and preemptive session renewal
+- OpenAI-aligned silence handling via `wait_for_user`
+- Context-aware `end_call` goodbyes
+- Single editable prompt: `prompts/main_system_instructions.md` (Realtime 2-aligned)
+
+### Built-in tools
+
+| Tool | When available |
+| --- | --- |
+| `wait_for_user`, `end_call` | Always |
+| `save_call_record` | Call-record backend configured |
+| `request_human_handoff` | Live transfer configured |
+| Booking tools (5) | Google Calendar + booking enabled |
+
+### Optional (env-gated)
+
+- Supabase call-record **dashboard** (`/dashboard`, `/calls`)
+- **Google Calendar** appointment booking
+- **Outbound** campaigns and missed-call AI callback
+- Call **recording**, playback proxy, and **Whisper** transcription
+- Dashboard **runtime settings** (voice, VAD, booking) via Supabase
+- MCP / external tool registry scaffold (disabled in v1)
+
+---
+
+## Quick start
+
+**Prerequisites:** Python 3.10+, [OpenAI API key](https://platform.openai.com/api-keys), [Twilio account](https://www.twilio.com/) with a Voice number, and a public HTTPS URL (ngrok or Cloud Run).
 
 ```bash
+git clone https://github.com/aymalkhalid/Twilio-speech-assistant-openai-realtime-api-python.git
+cd Twilio-speech-assistant-openai-realtime-api-python
+
 python3 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
@@ -39,20 +62,25 @@ python main.py
 Point your Twilio Voice webhook to:
 
 ```text
-https://YOUR_HOST/incoming-call
+https://YOUR_PUBLIC_HOST/incoming-call
 ```
 
-Full checklist (MVP → optional features): [docs/ONBOARDING.md](./docs/ONBOARDING.md)
+**Full checklist (MVP → optional features):** [docs/ONBOARDING.md](./docs/ONBOARDING.md)
 
-## Customize The Agent
+---
 
-**Prompt (behavior):** edit `prompts/main_system_instructions.md`  
-**Tools (schemas + side effects):** edit `services/openai_service.py`  
-**Language/accent/reasoning:** set env vars below (rendered by `config.py`)
+## Customize the agent
 
-Prompting follows the [OpenAI Realtime guide](./docs/references/openai-realtime-models-prompting.md). See [starter mapping](./docs/references/STARTER_PROMPT_MAPPING.md) for section coverage.
+| Goal | Edit |
+| --- | --- |
+| Conversation behavior | `prompts/main_system_instructions.md` |
+| Tool schemas + handlers | `services/openai_service.py` |
+| Voice, language, accent, reasoning | `.env` or dashboard Settings (see [CONFIGURATION.md](./docs/CONFIGURATION.md)) |
+| Greeting / farewell phrasing | `system_instructions.py` |
 
-Useful env values:
+Prompting follows the [OpenAI Realtime guide](./docs/references/openai-realtime-models-prompting.md). Section mapping: [STARTER_PROMPT_MAPPING.md](./docs/references/STARTER_PROMPT_MAPPING.md).
+
+Example env values:
 
 ```env
 COMPANY_NAME=Acme Voice Agent Demo
@@ -66,23 +94,76 @@ ASSISTANT_ACCENT_STRENGTH=light
 LANGUAGE_SWITCH_POLICY=default_only
 ```
 
-Full configuration: [docs/CONFIGURATION.md](./docs/CONFIGURATION.md)
+---
 
-## Storage And Dashboard
+## Documentation
 
-The core phone agent runs without Supabase. Set `CALL_RECORD_BACKEND=supabase` and
-Supabase credentials to enable `/dashboard`, `/calls`, recordings, transcripts,
-notes, and statuses.
+| Guide | Description |
+| --- | --- |
+| [ONBOARDING.md](./docs/ONBOARDING.md) | Clone → live agent checklist |
+| [DIAGRAMS.md](./docs/DIAGRAMS.md) | 23 architecture Mermaid diagrams |
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Module overview and runtime flow |
+| [CONFIGURATION.md](./docs/CONFIGURATION.md) | Env vars and prompt placeholders |
+| [TOOLS.md](./docs/TOOLS.md) | Realtime tool behavior |
+| [DEPLOY_CLOUD_RUN.md](./docs/DEPLOY_CLOUD_RUN.md) | Production deploy |
 
-Docs: [docs/ONBOARDING.md](./docs/ONBOARDING.md) · Diagrams: [docs/DIAGRAMS.md](./docs/DIAGRAMS.md) (23 sections)
+---
 
-The default table is `call_records`. Older `leads` tables remain supported by setting
-`SUPABASE_CALL_RECORD_TABLE=leads` during migration.
+## Dashboard and storage
 
-## Deploy To Cloud Run
+The core phone agent runs **without Supabase**. To enable the dashboard, call records, recordings, and transcripts:
+
+```env
+CALL_RECORD_BACKEND=supabase
+SUPABASE_URL=...
+SUPABASE_KEY=...
+DASHBOARD_USERS=admin:your-secure-password
+```
+
+Default table: `call_records`. Legacy `leads` tables: set `SUPABASE_CALL_RECORD_TABLE=leads`.
+
+Schema: [docs/supabase-schema/](./docs/supabase-schema/)
+
+---
+
+## Deploy to Cloud Run
 
 ```bash
 ./scripts/deploy-cloudrun.sh
 ```
 
-The script reads local `.env`, excludes local secrets, and deploys the container.
+Reads local `.env`, excludes local file-path secrets, and deploys the `speech-assistant` service. Post-deploy: set Twilio webhook to `{SERVICE_URL}/incoming-call`.
+
+Details: [docs/DEPLOY_CLOUD_RUN.md](./docs/DEPLOY_CLOUD_RUN.md)
+
+---
+
+## Project structure
+
+```text
+main.py                          # FastAPI routes, Twilio WebSocket bridge
+config.py                        # Env loading, prompt builders
+prompts/main_system_instructions.md   # Agent behavior (edit first)
+services/openai_service.py       # Realtime session, tools, handlers
+services/connection_manager.py   # Twilio ↔ OpenAI WebSocket manager
+services/twilio_service.py       # TwiML, caller cache, recording
+static/dashboard.html            # Optional call-record UI
+docs/                            # Onboarding, diagrams, configuration
+```
+
+---
+
+## Development
+
+```bash
+pytest tests/test_system_instructions.py
+pytest tests/test_openai_service.py
+```
+
+Pre-commit hooks scan for secrets (see `.pre-commit-config.yaml`).
+
+---
+
+## License
+
+[MIT](LICENSE) — see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines.
