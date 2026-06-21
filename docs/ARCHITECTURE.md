@@ -42,4 +42,4 @@ See [Configuration](./CONFIGURATION.md) and [Starter prompt mapping](./reference
 
 ## Diagrams
 
-Visual flows live in [Diagrams](./DIAGRAMS.md) (23 sections, indexed). Quick start: [Onboarding](./ONBOARDING.md). Interactive canvas: `canvases/voice-agent-architecture.canvas.tsx` in the Cursor project folder.
+Visual flows live in [Diagrams](./DIAGRAMS.md) (23 sections, indexed). For a single shareable overview, see [Master diagram](./MASTER_DIAGRAM.md) and the poster at [`images/MasterArchitectureDiagram.png`](./images/MasterArchitectureDiagram.png). Quick start: [Onboarding](./ONBOARDING.md).

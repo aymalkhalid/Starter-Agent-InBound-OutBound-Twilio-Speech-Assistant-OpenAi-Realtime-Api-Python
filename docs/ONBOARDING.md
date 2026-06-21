@@ -17,6 +17,8 @@ One-page path from clone to a working phone agent, with optional features in ord
 
 Diagram: [§2 Inbound sequence](./DIAGRAMS.md#2-inbound-call-sequence) · [§19 First deploy](./DIAGRAMS.md#19-first-deploy-checklist)
 
+**Building for a specific client?** [Multi-client workflow](./MULTI_CLIENT_WORKFLOW.md) · [Client discovery template](./templates/CLIENT_DISCOVERY.md)
+
 ---
 
 ## Step 2 — Customize behavior

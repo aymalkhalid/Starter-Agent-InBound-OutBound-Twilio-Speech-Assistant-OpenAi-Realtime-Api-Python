@@ -9,6 +9,36 @@ Production-ready **Python/FastAPI** starter for inbound and outbound **phone AI 
 
 ---
 
+## Architecture
+
+One shared **WebSocket media bridge** (`/media-stream`) powers **inbound** calls and all **outbound** triggers (campaign bulk dial, single contact dial, missed-call AI callback). Optional layers—Supabase CRM, Google Calendar booking, human transfer, recording, and transcription—attach via Realtime tools and env config.
+
+<p align="center">
+  <a href="./docs/MASTER_DIAGRAM.md">
+    <img
+      src="docs/images/MasterArchitectureDiagram.png"
+      alt="Voice Agent Starter master architecture: inbound and outbound call triggers, shared WebSocket media bridge, Supabase CRM, Google Calendar, and optional post-call services"
+      width="900"
+    />
+  </a>
+</p>
+
+<p align="center"><sub>Click the diagram for the full breakdown and Mermaid source · <a href="./docs/MASTER_DIAGRAM.md">docs/MASTER_DIAGRAM.md</a></sub></p>
+
+| Layer | Required | What it does |
+| --- | --- | --- |
+| Twilio + OpenAI Realtime | Yes | Phone audio ↔ speech AI (`OPENAI_API_KEY` + Twilio webhook) |
+| Inbound | Yes (default) | Caller → `/incoming-call` → `/media-stream` → default system prompt |
+| Outbound (3 triggers) | Optional | Dashboard or missed-call callback → Twilio REST dial → same `/media-stream` with campaign prompt |
+| Supabase CRM | Optional | Call records, dashboard, outbound campaigns, runtime settings |
+| Webhook CRM | Optional | `save_call_record` POST to `WEBHOOK_URL` (no dashboard) |
+| Google Calendar | Optional | Five booking tools when `BOOKING_ENABLED=true` |
+| Post-call | Optional | Twilio recording + faster-whisper transcription (dashboard-triggered) |
+
+**Diagram source & breakdown:** [docs/MASTER_DIAGRAM.md](./docs/MASTER_DIAGRAM.md) · **Detailed flows (23 Mermaid diagrams):** [docs/DIAGRAMS.md](./docs/DIAGRAMS.md) · **Module narrative:** [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
+
+---
+
 ## Features
 
 ### Core (works with `OPENAI_API_KEY` only)
@@ -100,7 +130,9 @@ LANGUAGE_SWITCH_POLICY=default_only
 
 | Guide | Description |
 | --- | --- |
+| [MASTER_DIAGRAM.md](./docs/MASTER_DIAGRAM.md) | Master architecture (PNG + Mermaid + step-by-step breakdown) |
 | [ONBOARDING.md](./docs/ONBOARDING.md) | Clone → live agent checklist |
+| [MULTI_CLIENT_WORKFLOW.md](./docs/MULTI_CLIENT_WORKFLOW.md) | Separate deploy per client (real estate, lead qualifier, …) |
 | [DIAGRAMS.md](./docs/DIAGRAMS.md) | 23 architecture Mermaid diagrams |
 | [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Module overview and runtime flow |
 | [CONFIGURATION.md](./docs/CONFIGURATION.md) | Env vars and prompt placeholders |
@@ -149,6 +181,7 @@ services/connection_manager.py   # Twilio ↔ OpenAI WebSocket manager
 services/twilio_service.py       # TwiML, caller cache, recording
 static/dashboard.html            # Optional call-record UI
 docs/                            # Onboarding, diagrams, configuration
+docs/images/MasterArchitectureDiagram.png  # Master architecture poster
 ```
 
 ---

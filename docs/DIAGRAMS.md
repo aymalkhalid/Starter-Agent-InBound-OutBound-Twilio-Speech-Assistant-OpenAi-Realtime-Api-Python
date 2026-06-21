@@ -2,7 +2,7 @@
 
 Visual reference for the Twilio + OpenAI Realtime voice-agent starter. Diagrams match the current code in `main.py`, `config.py`, and `services/`.
 
-For narrative context see [Architecture](./ARCHITECTURE.md). For tool behavior see [Realtime Tools](./TOOLS.md). Quick start checklist: [Onboarding](./ONBOARDING.md).
+For narrative context see [Architecture](./ARCHITECTURE.md). For the rendered poster see [`images/MasterArchitectureDiagram.png`](./images/MasterArchitectureDiagram.png) and [Master diagram](./MASTER_DIAGRAM.md). For tool behavior see [Realtime Tools](./TOOLS.md). Quick start checklist: [Onboarding](./ONBOARDING.md).
 
 ## Index
 

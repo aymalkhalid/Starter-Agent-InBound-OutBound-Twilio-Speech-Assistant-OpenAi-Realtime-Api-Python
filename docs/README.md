@@ -5,7 +5,10 @@ Docs for the Twilio + OpenAI Realtime starter. Agent behavior is defined in `pro
 ## Guides
 
 - [Onboarding](./ONBOARDING.md) — one-page clone → live agent checklist
+- [Multi-client workflow](./MULTI_CLIENT_WORKFLOW.md) — build a separate agent per client (real estate, lead qualifier, etc.)
+- [Client discovery template](./templates/CLIENT_DISCOVERY.md) — fillable kickoff form per new client
 - [Architecture](./ARCHITECTURE.md)
+- [Master diagram](./MASTER_DIAGRAM.md) — PNG poster + Mermaid source + step-by-step breakdown ([`images/MasterArchitectureDiagram.png`](./images/MasterArchitectureDiagram.png))
 - [Diagrams](./DIAGRAMS.md) — Mermaid flows (23 sections); index at top
 - [Configuration](./CONFIGURATION.md) — prompt placeholders, language/accent, reasoning effort, VAD, silence handling
 - [Realtime Tools](./TOOLS.md)
