@@ -110,6 +110,15 @@ https://YOUR_PUBLIC_HOST/incoming-call
 
 Prompting follows the [OpenAI Realtime guide](./docs/references/openai-realtime-models-prompting.md). Section mapping: [STARTER_PROMPT_MAPPING.md](./docs/references/STARTER_PROMPT_MAPPING.md).
 
+For client or industry builds, keep behavior as prompt-as-code: use an agentic coding tool to edit the prompt and related tests/docs, then preview the rendered instructions before deploying:
+
+```bash
+python scripts/preview_system_prompt.py
+pytest tests/test_system_instructions.py
+```
+
+Workflow: [PROMPT_AS_CODE.md](./docs/PROMPT_AS_CODE.md).
+
 Example env values:
 
 ```env
@@ -132,6 +141,7 @@ LANGUAGE_SWITCH_POLICY=default_only
 | --- | --- |
 | [MASTER_DIAGRAM.md](./docs/MASTER_DIAGRAM.md) | Master architecture (PNG + Mermaid + step-by-step breakdown) |
 | [ONBOARDING.md](./docs/ONBOARDING.md) | Clone → live agent checklist |
+| [PROMPT_AS_CODE.md](./docs/PROMPT_AS_CODE.md) | Code-first prompt customization workflow |
 | [MULTI_CLIENT_WORKFLOW.md](./docs/MULTI_CLIENT_WORKFLOW.md) | Separate deploy per client (real estate, lead qualifier, …) |
 | [DIAGRAMS.md](./docs/DIAGRAMS.md) | 23 architecture Mermaid diagrams |
 | [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Module overview and runtime flow |

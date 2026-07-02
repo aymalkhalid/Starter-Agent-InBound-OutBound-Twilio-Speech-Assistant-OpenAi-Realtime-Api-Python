@@ -114,7 +114,7 @@ sequenceDiagram
     T->>F: POST /incoming-call (From, CallSid)
     F->>TS: create_incoming_call_response
     TS->>TS: Cache caller in _CALLER_CACHE
-    TS-->>T: TwiML Connect Stream → wss://host/media-stream
+    TS-->>T: TwiML Connect Stream + caller_number Parameter
     T->>F: WebSocket /media-stream
 
     F->>F: dynamic_settings.load_overrides_sync (optional)
@@ -123,8 +123,8 @@ sequenceDiagram
     OS->>O: session.update (instructions, tools, voice, VAD)
     O-->>WCM: session.updated
 
-    T->>F: event start (streamSid, callSid)
-    Note over WCM: Resolve caller from URL or _CALLER_CACHE
+    T->>F: event start (streamSid, callSid, customParameters)
+    Note over WCM: Resolve caller from customParameters or _CALLER_CACHE
     OS->>O: send_caller_phone_session_update
     OS->>O: send_initial_greeting (response.create)
     OS->>OS: prewarm_availability_cache (if booking)
@@ -133,7 +133,7 @@ sequenceDiagram
         T->>F: event media (μ-law base64)
         AS->>AS: process_incoming_audio
         WCM->>O: input_audio_buffer.append
-        O-->>WCM: response.audio.delta
+        O-->>WCM: response.output_audio.delta
         AS->>AS: process_outgoing_audio
         WCM->>T: media + mark
     end
@@ -164,7 +164,7 @@ flowchart TB
 
     TW_RCV -->|mark| HMK["handle_mark_event → AudioService"]
 
-    OAI_RCV -->|response.audio.delta| HAD["handle_audio_delta"]
+    OAI_RCV -->|response.output_audio.delta| HAD["handle_audio_delta"]
     HAD --> AS["AudioService.process_outgoing_audio"]
     HAD --> WCM2["send_to_twilio"]
 
@@ -327,8 +327,9 @@ sequenceDiagram
     D->>F: POST /outbound/campaigns/{id}/start
     F->>OBS: Dial contacts (Twilio REST)
     T->>F: GET /outbound-call-twiml/{campaign_id}
-    F-->>T: TwiML → wss://host/media-stream?direction=outbound&...
+    F-->>T: TwiML → wss://host/media-stream + outbound Parameters
     T->>MS: WebSocket connect
+    T->>MS: start.customParameters (direction, campaign_id, contact_id)
     MS->>OBS: build_outbound_system_message()
     MS->>MS: Minimal outbound greeting (not inbound welcome)
     T->>F: POST /outbound-call-status
@@ -774,7 +775,7 @@ flowchart TD
 
 | Category | Example keys |
 | --- | --- |
-| Voice / model | `VOICE`, `OPENAI_REALTIME_MODEL`, `REALTIME_REASONING_EFFORT`, `TEMPERATURE` |
+| Voice / model | `VOICE`, `OPENAI_REALTIME_MODEL`, `REALTIME_REASONING_EFFORT` |
 | Language / accent | `ASSISTANT_LANGUAGE`, `ASSISTANT_ACCENT`, `LANGUAGE_SWITCH_POLICY` |
 | VAD | `VAD_MODE`, `VAD_THRESHOLD`, `VAD_DEBOUNCE_AFTER_OUTGOING_MS`, `VAD_INTERRUPTION_CONFIRM_MS` |
 | Booking | `BOOKING_ENABLED`, `BOOKING_DAYS_ENABLED`, `GOOGLE_CALENDAR_ID`, slot hours |
@@ -792,11 +793,11 @@ Source: `OpenAIService.maybe_handle_tool_call()` + `main.py` event handlers.
 stateDiagram-v2
     [*] --> ActiveCall
 
-    ActiveCall --> GoodbyeQueued: end_call tool
-    GoodbyeQueued --> GoodbyeQueued: duplicate end_call ignored
+    ActiveCall --> GoodbyeQueued: end_call tool → function_call_output
+    GoodbyeQueued --> GoodbyeQueued: duplicate end_call acknowledged, no new response
 
     GoodbyeQueued --> FarewellPlaying: response.create with farewell instructions
-    FarewellPlaying --> AudioHeard: response.audio.delta → mark_goodbye_audio_heard
+    FarewellPlaying --> AudioHeard: response.output_audio.delta → mark_goodbye_audio_heard
 
     GoodbyeQueued --> Finalizing: watchdog timeout (no audio)
     note right of GoodbyeQueued
@@ -805,9 +806,11 @@ stateDiagram-v2
     end note
 
     AudioHeard --> Finalizing: response.done matches goodbye item_id
+    AudioHeard --> Finalizing: completion watchdog timeout
     note right of AudioHeard
         Interruptions blocked
         is_goodbye_pending()
+        response metadata/item fallback
     end note
 
     Finalizing --> GraceSleep: finalize_goodbye()
@@ -940,4 +943,3 @@ Documented in `services/mcp_adapter.py`:
 | Prompt | Built-in tools only — external tools need prompt text when enabled |
 
 No MCP runtime dependency is bundled in the starter requirements.
-

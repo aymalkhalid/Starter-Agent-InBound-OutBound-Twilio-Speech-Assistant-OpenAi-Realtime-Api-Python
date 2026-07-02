@@ -6,4 +6,4 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
   value text NOT NULL DEFAULT ''
 );
 
-COMMENT ON TABLE public.app_settings IS 'Optional voice-agent config overrides such as TRANSCRIPTION_MODEL, VOICE, VAD, and booking settings.';
+COMMENT ON TABLE public.app_settings IS 'Optional runtime-safe voice-agent config overrides such as TRANSCRIPTION_MODEL, VOICE, VAD, and booking settings. Do not store full prompts or industry profiles here.';

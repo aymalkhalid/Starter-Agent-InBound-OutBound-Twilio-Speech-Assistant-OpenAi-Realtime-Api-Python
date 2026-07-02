@@ -25,8 +25,11 @@ class ConnectionState:
         self.stream_sid: Optional[str] = None
         self.call_sid: Optional[str] = None
         self.caller_phone_number: Optional[str] = None
+        self.twilio_custom_parameters: dict[str, str] = {}
         # Set in media-stream when outbound context resolved from CallSid cache; used so initial greeting uses minimal item
         self.is_outbound_call: bool = False
+        self.outbound_campaign_id: Optional[str] = None
+        self.outbound_contact_id: Optional[str] = None
         # Timestamp (seconds) when we last sent assistant audio to Twilio (for echo debounce)
         self.last_outgoing_audio_at: Optional[float] = None
         # Call outcome for context-aware goodbye (set by save_call_record / book_appointment)
@@ -160,14 +163,40 @@ class WebSocketConnectionManager:
                         or start_info.get('call_id')
                         or start_info.get('CallSid')  # Twilio webhook-style casing
                     )
+                    raw_custom_parameters = start_info.get("customParameters") or {}
+                    if isinstance(raw_custom_parameters, dict):
+                        custom_parameters = {
+                            str(k): str(v).strip()
+                            for k, v in raw_custom_parameters.items()
+                            if v is not None and str(v).strip()
+                        }
+                    else:
+                        custom_parameters = {}
                     self.state.stream_sid = stream_sid
                     self.state.call_sid = call_sid
-                    # If we didn't get caller from media-stream URL (Twilio often sends empty query), use cache from POST webhook
+                    self.state.twilio_custom_parameters = custom_parameters
+                    caller_from_params = (
+                        custom_parameters.get("caller_number")
+                        or custom_parameters.get("From")
+                        or custom_parameters.get("from")
+                    )
+                    if caller_from_params and not getattr(self.state, "caller_phone_number", None):
+                        self.state.caller_phone_number = caller_from_params
+                        Log.event("Caller number from Twilio customParameters", {
+                            "incoming_caller_number": caller_from_params,
+                            "callSid": call_sid,
+                        })
+                    direction = (custom_parameters.get("direction") or "").strip().lower()
+                    if direction == "outbound":
+                        self.state.is_outbound_call = True
+                        self.state.outbound_campaign_id = custom_parameters.get("campaign_id")
+                        self.state.outbound_contact_id = custom_parameters.get("contact_id")
+                    # If we didn't get caller from customParameters, use cache from POST webhook.
                     if not getattr(self.state, "caller_phone_number", None) and call_sid:
                         from_cache = TwilioService.get_caller_for_call(call_sid)
                         if from_cache:
                             self.state.caller_phone_number = from_cache
-                            Log.event("Caller number from cache (stream URL had no query)", {
+                            Log.event("Caller number from cache (stream customParameters missing caller_number)", {
                                 "incoming_caller_number": from_cache,
                                 "callSid": call_sid,
                             })

@@ -719,7 +719,7 @@ class OpenAISessionManager:
         Create a session update message for OpenAI Realtime API.
         - Model: from Config.OPENAI_REALTIME_MODEL (must match WS URL model).
         - Input/output: audio/pcmu (Twilio media stream format).
-        - Voice: from Config.VOICE (e.g. marin, cedar); also set in WS URL at connect.
+        - Voice: from Config.VOICE (e.g. marin, cedar); applied in session.audio.output.
         - Caller number is not set here (API requires session.prompt.id for prompt.variables).
           It is passed via the initial conversation item (create_initial_conversation_item).
         - system_message_override: when set (e.g. outbound calls), uses this instead of Config.SYSTEM_MESSAGE.
@@ -1361,7 +1361,14 @@ class OpenAIService:
     def is_tool_call(self, event: Dict[str, Any]) -> bool:
         """Return True if the event is a tool call from the model."""
         etype = event.get('type')
-        if etype in ('response.function_call.arguments.delta', 'response.function_call.completed'):
+        if etype in (
+            'response.function_call.arguments.delta',
+            'response.function_call.completed',
+            # Current GA Realtime docs use response.function_call_arguments.delta.
+            # Keep the older dotted names for compatibility with preview events.
+            'response.function_call_arguments.delta',
+            'response.function_call_arguments.done',
+        ):
             return True
         # Also detect tool/function calls embedded in response.done payloads
         if etype == 'response.done':
@@ -1378,7 +1385,7 @@ class OpenAIService:
         Returns the completed call payload when finished.
         """
         etype = event.get('type')
-        if etype == 'response.function_call.arguments.delta':
+        if etype in ('response.function_call.arguments.delta', 'response.function_call_arguments.delta'):
             if self._is_wait_for_user_tool_name(event.get('name')):
                 self.suppress_assistant_audio()
             call_id = event.get('call_id') or event.get('id') or 'default'
@@ -1386,7 +1393,7 @@ class OpenAIService:
             buf = self._pending_tool_calls.setdefault(call_id, {"args": "", "name": event.get('name')})
             buf["args"] += delta
             return None
-        if etype == 'response.function_call.completed':
+        if etype in ('response.function_call.completed', 'response.function_call_arguments.done'):
             if self._is_wait_for_user_tool_name(event.get('name')):
                 self.suppress_assistant_audio()
             call_id = event.get('call_id') or event.get('id') or 'default'
@@ -1527,13 +1534,26 @@ class OpenAIService:
             )
             if self._pending_goodbye:
                 Log.info("End-call already pending; ignoring duplicate request")
-                return False
+                await self._send_tool_result(
+                    connection_manager,
+                    call_id,
+                    json.dumps({"success": True, "message": "Goodbye is already in progress."}),
+                    trigger_response=False,
+                )
+                return True
             Log.info("Queueing farewell response before hangup")
-            await self._send_goodbye_response(connection_manager, farewell)
+            self.clear_assistant_audio_suppression()
             self._pending_goodbye = True
             self._goodbye_audio_heard = False
             self._goodbye_item_id = None
             self._start_goodbye_watchdog(connection_manager)
+            await self._send_tool_result(
+                connection_manager,
+                call_id,
+                json.dumps({"success": True, "message": "Ending the call after a brief goodbye."}),
+                trigger_response=False,
+            )
+            await self._send_goodbye_response(connection_manager, farewell)
             return True
 
         if name == 'request_human_handoff':
@@ -1957,6 +1977,7 @@ class OpenAIService:
             await connection_manager.send_to_openai({
                 "type": "response.create",
                 "response": {
+                    "metadata": {"purpose": "end_call_goodbye"},
                     "instructions": text
                 }
             })
@@ -1977,20 +1998,29 @@ class OpenAIService:
         etype = event.get('type')
         # Finalize only when the full response is done (entire farewell), not on first audio segment done
         if etype == 'response.done':
-            if not self._goodbye_item_id:
-                # Fallback: if we can't match IDs, but the response contains an assistant message with audio, allow finalize
-                resp = event.get('response') or {}
+            resp = event.get('response') or {}
+            metadata = resp.get('metadata') if isinstance(resp, dict) else {}
+            if isinstance(metadata, dict) and metadata.get("purpose") == "end_call_goodbye":
+                return True
+
+            def _has_assistant_audio_message() -> bool:
                 for item in (resp.get('output') or []):
                     if isinstance(item, dict) and item.get('type') == 'message' and item.get('role') == 'assistant':
                         for c in (item.get('content') or []):
                             if isinstance(c, dict) and c.get('type') == 'output_audio':
                                 return True
                 return False
+
+            if not self._goodbye_item_id:
+                # Fallback: if we can't match IDs, but the response contains an assistant message with audio, allow finalize
+                return _has_assistant_audio_message()
             # If we do have a tracked item id, try to match it to the output item id
-            resp = event.get('response') or {}
             for item in (resp.get('output') or []):
                 if isinstance(item, dict) and item.get('id') == self._goodbye_item_id:
                     return True
+            if _has_assistant_audio_message():
+                Log.info("Goodbye response.done item_id did not match; finalizing based on assistant audio completion")
+                return True
         return False
 
     async def finalize_goodbye(self, connection_manager) -> None:
@@ -2028,17 +2058,18 @@ class OpenAIService:
         """Return True if a farewell has been queued and we await its completion."""
         return self._pending_goodbye
 
-    def mark_goodbye_audio_heard(self, item_id: Optional[str]) -> None:
+    def mark_goodbye_audio_heard(self, item_id: Optional[str], connection_manager=None) -> None:
         """Mark that we've begun receiving audio for the goodbye message and capture its item_id."""
         if self._pending_goodbye:
+            first_audio = not self._goodbye_audio_heard
             self._goodbye_audio_heard = True
             if item_id and not self._goodbye_item_id:
                 self._goodbye_item_id = item_id
-            # Once audio is heard, watchdog is no longer needed
-            self._cancel_goodbye_watchdog()
+            if first_audio and connection_manager is not None:
+                self._start_goodbye_watchdog(connection_manager, after_audio_started=True)
 
-    def _start_goodbye_watchdog(self, connection_manager) -> None:
-        """Start a watchdog that finalizes the call if no goodbye audio starts in time."""
+    def _start_goodbye_watchdog(self, connection_manager, *, after_audio_started: bool = False) -> None:
+        """Start a watchdog for no-audio or no-completion goodbye failures."""
         self._cancel_goodbye_watchdog()
         try:
             timeout = getattr(Config, 'END_CALL_WATCHDOG_SECONDS', 4)
@@ -2046,7 +2077,12 @@ class OpenAIService:
             async def _watch():
                 try:
                     await asyncio.sleep(timeout)
-                    if self._pending_goodbye and not self._goodbye_audio_heard:
+                    if not self._pending_goodbye:
+                        return
+                    if after_audio_started:
+                        Log.info("Goodbye response.done not detected in time; finalizing call")
+                        await self.finalize_goodbye(connection_manager)
+                    elif not self._goodbye_audio_heard:
                         Log.info("Goodbye audio not detected in time; finalizing call")
                         await self.finalize_goodbye(connection_manager)
                 except Exception:
@@ -2057,7 +2093,12 @@ class OpenAIService:
             self._goodbye_watchdog = None
 
     def _cancel_goodbye_watchdog(self) -> None:
-        if self._goodbye_watchdog and not self._goodbye_watchdog.done():
+        current_task = None
+        try:
+            current_task = asyncio.current_task()
+        except RuntimeError:
+            current_task = None
+        if self._goodbye_watchdog and self._goodbye_watchdog is not current_task and not self._goodbye_watchdog.done():
             self._goodbye_watchdog.cancel()
         self._goodbye_watchdog = None
     

@@ -17,7 +17,7 @@ One-page path from clone to a working phone agent, with optional features in ord
 
 Diagram: [§2 Inbound sequence](./DIAGRAMS.md#2-inbound-call-sequence) · [§19 First deploy](./DIAGRAMS.md#19-first-deploy-checklist)
 
-**Building for a specific client?** [Multi-client workflow](./MULTI_CLIENT_WORKFLOW.md) · [Client discovery template](./templates/CLIENT_DISCOVERY.md)
+**Building for a specific client?** [Prompt-as-code](./PROMPT_AS_CODE.md) · [Multi-client workflow](./MULTI_CLIENT_WORKFLOW.md) · [Client discovery template](./templates/CLIENT_DISCOVERY.md)
 
 ---
 
@@ -30,7 +30,7 @@ Diagram: [§2 Inbound sequence](./DIAGRAMS.md#2-inbound-call-sequence) · [§19 
 | Tool schemas + side effects | `services/openai_service.py` |
 | Greeting / farewell phrasing | `system_instructions.py` |
 
-After prompt changes: `pytest tests/test_system_instructions.py`
+After prompt changes: `python scripts/preview_system_prompt.py` and `pytest tests/test_system_instructions.py`
 
 Diagram: [§22 Prompt architecture](./DIAGRAMS.md#22-prompt-architecture-map) · Mapping: [STARTER_PROMPT_MAPPING.md](./references/STARTER_PROMPT_MAPPING.md)
 

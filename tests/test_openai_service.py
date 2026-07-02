@@ -127,12 +127,18 @@ class _DummyConnectionManager:
             resolved_call_record_id=None,
         )
         self.sent_to_openai = []
+        self.marked_twilio_closed = False
+        self.close_twilio_calls = []
 
     async def send_to_openai(self, message):
         self.sent_to_openai.append(message)
 
     def mark_twilio_closed(self):
-        return None
+        self.marked_twilio_closed = True
+
+    async def close_twilio_connection(self, code=1000, reason=None):
+        self.close_twilio_calls.append({"code": code, "reason": reason})
+        self.marked_twilio_closed = True
 
 
 class _ImmediateExecutorLoop:
@@ -602,6 +608,122 @@ def test_wait_for_user_delta_enables_audio_suppression():
     assert service.should_suppress_assistant_audio() is True
     service.clear_assistant_audio_suppression()
     assert service.should_suppress_assistant_audio() is False
+
+
+def test_current_realtime_function_call_arguments_delta_is_supported():
+    service = OpenAIService()
+    assert service.is_tool_call({"type": "response.function_call_arguments.delta"}) is True
+    service.accumulate_tool_call({
+        "type": "response.function_call_arguments.delta",
+        "name": "wait_for_user",
+        "call_id": "call_wait_delta_current",
+        "delta": "",
+    })
+    assert service.should_suppress_assistant_audio() is True
+
+
+def test_end_call_acknowledges_tool_and_queues_tagged_goodbye(monkeypatch):
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_end")
+    service.suppress_assistant_audio()
+    monkeypatch.setattr(service, "_start_goodbye_watchdog", lambda *args, **kwargs: None)
+    monkeypatch.setattr(openai_service_module, "get_farewell_instruction", lambda *args, **kwargs: "Say bye now.")
+
+    tool_call = {
+        "name": "end_call",
+        "arguments": {"reason": "caller said goodbye"},
+        "call_id": "call_end_1",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, tool_call) is True
+
+    asyncio.run(_run())
+    outputs = _tool_outputs(connection_manager)
+    assert outputs == ['{"success": true, "message": "Ending the call after a brief goodbye."}']
+    response_creates = [
+        m for m in connection_manager.sent_to_openai
+        if isinstance(m, dict) and m.get("type") == "response.create"
+    ]
+    assert response_creates == [
+        {
+            "type": "response.create",
+            "response": {
+                "metadata": {"purpose": "end_call_goodbye"},
+                "instructions": "Say bye now.",
+            },
+        }
+    ]
+    assert service.is_goodbye_pending() is True
+    assert service.should_suppress_assistant_audio() is False
+
+
+def test_duplicate_end_call_while_goodbye_pending_acknowledges_without_new_response():
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_end")
+    service._pending_goodbye = True
+
+    tool_call = {
+        "name": "end_call",
+        "arguments": {"reason": "caller said goodbye again"},
+        "call_id": "call_end_duplicate",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, tool_call) is True
+
+    asyncio.run(_run())
+    outputs = _tool_outputs(connection_manager)
+    assert outputs == ['{"success": true, "message": "Goodbye is already in progress."}']
+    assert [
+        m for m in connection_manager.sent_to_openai
+        if isinstance(m, dict) and m.get("type") == "response.create"
+    ] == []
+
+
+def test_goodbye_finalizes_on_metadata_or_audio_done_even_if_item_id_differs():
+    service = OpenAIService()
+    service._pending_goodbye = True
+    service._goodbye_audio_heard = True
+    service._goodbye_item_id = "item_expected"
+
+    assert service.should_finalize_on_event({
+        "type": "response.done",
+        "response": {"metadata": {"purpose": "end_call_goodbye"}, "output": []},
+    }) is True
+
+    assert service.should_finalize_on_event({
+        "type": "response.done",
+        "response": {
+            "output": [
+                {
+                    "id": "item_actual",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_audio", "transcript": "Goodbye."}],
+                }
+            ]
+        },
+    }) is True
+
+
+def test_goodbye_completion_watchdog_finalizes_after_audio_started(monkeypatch):
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_end")
+    service._pending_goodbye = True
+    monkeypatch.setattr(Config, "END_CALL_WATCHDOG_SECONDS", 0)
+    monkeypatch.setattr(Config, "END_CALL_GRACE_SECONDS", 0)
+    monkeypatch.setattr(Config, "TWILIO_ACCOUNT_SID", None)
+    monkeypatch.setattr(Config, "TWILIO_AUTH_TOKEN", None)
+
+    async def _run():
+        service.mark_goodbye_audio_heard("item_goodbye", connection_manager)
+        await asyncio.sleep(0.01)
+
+    asyncio.run(_run())
+    assert service.is_goodbye_pending() is False
+    assert connection_manager.marked_twilio_closed is True
+    assert connection_manager.close_twilio_calls == [{"code": 1000, "reason": "assistant completed"}]
 
 
 def test_booking_tool_descriptions_require_exact_booking_confirmation(monkeypatch):

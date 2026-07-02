@@ -37,7 +37,7 @@ Dashboard trigger
   → TwilioService.create_outbound_call()
   → Twilio rings callee
   → GET /outbound-call-twiml/{campaign_id}
-  → WSS /media-stream?direction=outbound&campaign_id&contact_id
+  → WSS /media-stream + Twilio Stream Parameters (direction, campaign_id, contact_id)
   → build_outbound_system_message() (campaign template + placeholders)
   → OpenAI Realtime conversation
   → POST /outbound-call-status → update Supabase contact status
@@ -192,7 +192,7 @@ flowchart TB
         end
 
         subgraph BRIDGE["Shared audio bridge"]
-            R_MS["WS /media-stream<br/>inbound OR ?direction=outbound"]
+            R_MS["WS /media-stream<br/>inbound OR outbound Parameters"]
         end
 
         subgraph OPS_ROUTES["Dashboard & ops APIs"]
@@ -396,8 +396,9 @@ sequenceDiagram
         T->>C: Ring phone
         C->>T: Answer
         T->>F: GET /outbound-call-twiml/{campaign_id}
-        F-->>T: TwiML → wss://host/media-stream?direction=outbound&…
+        F-->>T: TwiML → wss://host/media-stream + outbound Parameters
         T->>MS: WebSocket connect
+        T->>MS: start.customParameters
         MS->>OBS: build_outbound_system_message()
         OBS->>SB: Fetch campaign + contact
         MS->>O: session.update (campaign script + tools)
@@ -405,7 +406,7 @@ sequenceDiagram
         loop Conversation
             T->>MS: media audio
             MS->>O: input_audio_buffer.append
-            O-->>MS: response.audio.delta
+            O-->>MS: response.output_audio.delta
             MS->>T: media back
         end
         T->>F: POST /outbound-call-status (completed/failed/…)

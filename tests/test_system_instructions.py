@@ -251,7 +251,26 @@ def test_submit_lead_legacy_alias_still_validates():
     assert normalized["contact_phone"] == "+15551234567"
 
 
-def test_repo_has_no_yaml_files():
+def test_repo_has_no_industry_profile_yaml_files():
     root = Path(__file__).resolve().parents[1]
-    yaml_files = list(root.rglob("*.yaml")) + list(root.rglob("*.yml"))
+    ignored_parts = {
+        ".agents",
+        ".codex",
+        ".git",
+        ".pytest_cache",
+        ".venv",
+        "env",
+        "venv",
+        "site-packages",
+        "__pycache__",
+    }
+    allowed_tooling_files = {".pre-commit-config.yaml"}
+    yaml_files = []
+    for path in list(root.rglob("*.yaml")) + list(root.rglob("*.yml")):
+        rel = path.relative_to(root)
+        if path.name in allowed_tooling_files:
+            continue
+        if any(part in ignored_parts for part in rel.parts):
+            continue
+        yaml_files.append(rel)
     assert yaml_files == []

@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import time
-from urllib.parse import quote, parse_qs
+from urllib.parse import parse_qs
 from typing import Optional
 from fastapi import Request
 from fastapi.responses import HTMLResponse
@@ -10,11 +10,11 @@ from twilio.twiml.voice_response import VoiceResponse, Connect
 from config import Config
 from services.log_utils import Log
 
-# CallSid -> (From, timestamp); used when media-stream WebSocket has no query string (Twilio may not forward it).
+# CallSid -> (From, timestamp); fallback when stream customParameters are missing.
 _CALLER_CACHE: dict[str, tuple[str, float]] = {}
 _CALLER_CACHE_TTL_SEC = 300
 
-# CallSid -> (campaign_id, contact_id, timestamp); used when outbound stream connects with empty query (Twilio may not forward it).
+# CallSid -> (campaign_id, contact_id, timestamp); fallback when outbound stream customParameters are missing.
 _OUTBOUND_CONTEXT_CACHE: dict[str, tuple[str, str, float]] = {}
 
 
@@ -37,7 +37,8 @@ class TwilioService:
     async def create_incoming_call_response(cls, request: Request) -> HTMLResponse:
         """
         Create TwiML response for incoming calls to connect to Media Stream.
-        Passes caller phone number (From) as a query param so the stream handler can give it to OpenAI.
+        Passes caller phone number (From) as a Twilio custom parameter so the
+        stream handler can give it to OpenAI after the start message arrives.
         
         Args:
             request: FastAPI request object (hostname, form for From)
@@ -128,22 +129,40 @@ class TwilioService:
         })
         if not from_number:
             Log.event("Caller number missing — AI may invent a number when confirming", {
-                "hint": "Set voice webhook to POST so Twilio sends From in body; or ensure URL includes From in query.",
+                "hint": "Set voice webhook to POST so Twilio sends From in body.",
             })
-        if from_number:
-            stream_url += "?caller_number=" + quote(from_number, safe="")
 
         connect = Connect()
-        connect.stream(url=stream_url)
+        stream = connect.stream(url=stream_url)
+        if from_number:
+            stream.parameter(name="caller_number", value=from_number)
         response.append(connect)
 
+        return HTMLResponse(content=str(response), media_type="application/xml")
+
+    @classmethod
+    def create_outbound_stream_response(
+        cls,
+        host: str,
+        campaign_id: str,
+        contact_id: Optional[str] = "",
+    ) -> HTMLResponse:
+        """Create TwiML for an answered outbound call to connect to Media Stream."""
+        response = VoiceResponse()
+        connect = Connect()
+        stream = connect.stream(url=f"wss://{host}/media-stream")
+        stream.parameter(name="direction", value="outbound")
+        stream.parameter(name="campaign_id", value=campaign_id)
+        if contact_id:
+            stream.parameter(name="contact_id", value=contact_id)
+        response.append(connect)
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     @classmethod
     def get_caller_for_call(cls, call_sid: Optional[str]) -> Optional[str]:
         """
         Return From (caller number) for this call_sid if we stored it on the voice webhook.
-        Used when the media-stream WebSocket connects with an empty query string (Twilio may not forward it).
+        Used when the media-stream start message does not include caller_number.
         """
         if not call_sid:
             return None
@@ -161,7 +180,7 @@ class TwilioService:
     def register_outbound_context(cls, call_sid: str, campaign_id: str, contact_id: str) -> None:
         """
         Store (campaign_id, contact_id) for this call_sid so the media-stream handler
-        can apply the outbound agent when the WebSocket connects with an empty query string.
+        can apply the outbound agent if customParameters are unavailable.
         """
         if call_sid and campaign_id and contact_id:
             _OUTBOUND_CONTEXT_CACHE[call_sid] = (campaign_id, contact_id, time.time())
@@ -170,7 +189,7 @@ class TwilioService:
     def get_outbound_context(cls, call_sid: Optional[str]) -> Optional[tuple[str, str]]:
         """
         Return (campaign_id, contact_id) for this call_sid if we stored it when creating the outbound call.
-        Used when the media-stream WebSocket connects with an empty query string.
+        Used when the media-stream start message does not include outbound context.
         """
         if not call_sid:
             return None

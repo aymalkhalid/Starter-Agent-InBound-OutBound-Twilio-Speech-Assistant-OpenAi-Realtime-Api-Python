@@ -41,6 +41,14 @@ Change wording in the markdown file when possible. Change env vars when behavior
 
 Reference: [Starter prompt ↔ guide mapping](./references/STARTER_PROMPT_MAPPING.md)
 
+For industry/client changes, use the prompt-as-code workflow instead of storing full prompts in Supabase: [Prompt-as-code customization](./PROMPT_AS_CODE.md).
+
+Preview the fully rendered Realtime instructions locally:
+
+```bash
+python scripts/preview_system_prompt.py
+```
+
 ## Silence, background audio, and unclear speech
 
 The prompt separates two cases (see `# Handling Silence and Background Noise` and `# Unclear Audio`):
@@ -88,7 +96,7 @@ VAD can also be tuned from the dashboard Settings panel when Supabase is enabled
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2` | Realtime model id |
 | `REALTIME_REASONING_EFFORT` | `low` | `minimal` … `xhigh`; sent in session for `gpt-realtime-2` only |
 | `VOICE` | `cedar` | OpenAI Realtime voice |
-| `TEMPERATURE` | `0.8` | Session temperature |
+| `TEMPERATURE` | `0.8` | Legacy compatibility value; not sent to GA Realtime sessions |
 
 ## Language And Accent
 
@@ -122,9 +130,12 @@ LANGUAGE_SWITCH_POLICY=default_only
 
 Run `docs/supabase-schema/call_records_schema.sql` when enabling Supabase call-record storage. Existing deployments can point `SUPABASE_CALL_RECORD_TABLE` at an older `leads` table while migrating.
 
+Supabase `app_settings` stores runtime-safe overrides only. Do not put full system prompts, industry prompt profiles, or tool policy in `app_settings`; keep those in code and review them with tests.
+
 ## Changing Behavior Safely
 
 1. Edit `prompts/main_system_instructions.md` for conversational rules.
 2. Edit `.env` for language, accent, reasoning effort, and feature toggles.
 3. Edit tool schemas/handlers in `services/openai_service.py` when tool args or side effects change.
-4. Run `pytest tests/test_system_instructions.py` after prompt or config builder changes.
+4. Preview the rendered prompt with `python scripts/preview_system_prompt.py`.
+5. Run `pytest tests/test_system_instructions.py` after prompt or config builder changes.

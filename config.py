@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import List
+from urllib.parse import quote
 from dotenv import load_dotenv
 
 # Load .env from the directory containing this file (project root), so config works regardless of cwd
@@ -291,6 +292,7 @@ class Config:
         if _REALTIME_REASONING_EFFORT_RAW in {'minimal', 'low', 'medium', 'high', 'xhigh'}
         else 'low'
     )
+    # Legacy compatibility only. GA Realtime voice behavior is configured through session.update.
     TEMPERATURE: float = float(os.getenv('TEMPERATURE', 0.8))
     VOICE: str = _normalize_realtime_voice(os.getenv('VOICE', DEFAULT_REALTIME_VOICE))
     ASSISTANT_LANGUAGE: str = _sanitize_prompt_control(os.getenv('ASSISTANT_LANGUAGE'), 'English', 48)
@@ -473,13 +475,15 @@ class Config:
     @classmethod
     def get_openai_websocket_url(cls) -> str:
         """
-        Constructs the OpenAI WebSocket URL with configuration parameters.
+        Construct the OpenAI Realtime WebSocket URL.
+
+        Runtime behavior such as voice, audio format, tools, and reasoning
+        effort is sent in session.update.
         """
+        model = quote((cls.OPENAI_REALTIME_MODEL or "gpt-realtime-2").strip(), safe="")
         return (
             f"wss://api.openai.com/v1/realtime"
-            f"?model={cls.OPENAI_REALTIME_MODEL}"
-            f"&temperature={cls.TEMPERATURE}"
-            f"&voice={cls.VOICE}"
+            f"?model={model}"
         )
     
     @classmethod

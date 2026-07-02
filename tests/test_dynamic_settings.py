@@ -110,3 +110,19 @@ def test_apply_overrides_updates_booking_availability_settings(monkeypatch):
     assert Config.AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY == 0
     assert Config.BOOKING_DAYS_ENABLED == "mon,tue,wed,thu,fri"
     assert os.environ["AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY"] == "0"
+
+
+def test_dynamic_settings_do_not_include_prompt_profile_infrastructure():
+    """Supabase app_settings should stay runtime-safe, not become a prompt CMS."""
+    forbidden = {
+        "ACTIVE_AGENT_PROFILE_ID",
+        "AGENT_PROFILE_ID",
+        "PROMPT_PROFILE_ID",
+        "PROMPT_VERSION_ID",
+        "SYSTEM_MESSAGE",
+        "SYSTEM_PROMPT",
+        "PROMPT_TEMPLATE",
+        "INDUSTRY_PROMPT",
+    }
+
+    assert forbidden.isdisjoint(dynamic_settings.OVERRIDABLE_KEYS)

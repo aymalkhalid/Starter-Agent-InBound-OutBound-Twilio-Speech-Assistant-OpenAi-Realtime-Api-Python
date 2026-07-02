@@ -1,6 +1,9 @@
 """
-Dynamic settings: load overrides from Supabase and apply to Config so dashboard Settings
-can change transcription, voice, VAD, etc. without editing .env. See docs/CONFIGURATION.md.
+Dynamic settings: load runtime-safe overrides from Supabase and apply to Config.
+
+Dashboard Settings can change transcription, voice, VAD, booking, transfer, and
+similar knobs without editing .env. Main prompt content and industry behavior
+stay prompt-as-code in prompts/main_system_instructions.md. See docs/CONFIGURATION.md.
 """
 from __future__ import annotations
 
@@ -16,7 +19,8 @@ from config import (
 )
 from services.log_utils import Log
 
-# Keys the dashboard can override. Value type: "str" | "bool" | "int" | "float"
+# Runtime-safe keys the dashboard can override. Value type: "str" | "bool" | "int" | "float"
+# Do not add full prompt bodies, prompt-profile ids, or industry templates here.
 # Only used when CALL_RECORD_BACKEND=supabase and SUPABASE_URL/SUPABASE_KEY are set.
 OVERRIDABLE_KEYS: dict[str, str] = {
     "TRANSCRIPTION_MODEL": "str",

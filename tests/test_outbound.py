@@ -363,46 +363,49 @@ def test_concurrency_clamp_logic():
 # =========================================================================
 
 def test_outbound_twiml_shape():
-    """Outbound TwiML contains Connect > Stream with correct query params."""
+    """Outbound TwiML contains Connect > Stream with custom parameters."""
     from twilio.twiml.voice_response import VoiceResponse, Connect
-    from urllib.parse import quote
 
     campaign_id = "abc-123"
     contact_id = "def-456"
     host = "example.com"
 
-    stream_url = (
-        f"wss://{host}/media-stream"
-        f"?direction=outbound"
-        f"&campaign_id={quote(campaign_id, safe='')}"
-        f"&contact_id={quote(contact_id, safe='')}"
-    )
+    stream_url = f"wss://{host}/media-stream"
     response = VoiceResponse()
     connect = Connect()
-    connect.stream(url=stream_url)
+    stream = connect.stream(url=stream_url)
+    stream.parameter(name="direction", value="outbound")
+    stream.parameter(name="campaign_id", value=campaign_id)
+    stream.parameter(name="contact_id", value=contact_id)
     response.append(connect)
     xml = str(response)
 
-    assert "direction=outbound" in xml, f"Missing direction param in TwiML: {xml}"
-    assert f"campaign_id={campaign_id}" in xml, f"Missing campaign_id in TwiML: {xml}"
-    assert f"contact_id={contact_id}" in xml, f"Missing contact_id in TwiML: {xml}"
+    assert 'url="wss://example.com/media-stream"' in xml
+    assert "?direction=outbound" not in xml
+    assert 'name="direction" value="outbound"' in xml, f"Missing direction parameter in TwiML: {xml}"
+    assert f'name="campaign_id" value="{campaign_id}"' in xml, f"Missing campaign_id parameter in TwiML: {xml}"
+    assert f'name="contact_id" value="{contact_id}"' in xml, f"Missing contact_id parameter in TwiML: {xml}"
     assert "<Connect>" in xml, f"Missing <Connect> in TwiML: {xml}"
     assert "<Stream" in xml, f"Missing <Stream> in TwiML: {xml}"
-    assert "wss://example.com/media-stream" in xml
     print("  PASS: outbound TwiML shape")
 
 
-def test_outbound_twiml_url_encoding():
-    """Special characters in campaign/contact IDs are URL-encoded."""
-    from urllib.parse import quote
+def test_outbound_twiml_custom_parameter_xml_escaping():
+    """Special characters in campaign/contact IDs are XML-escaped."""
+    from twilio.twiml.voice_response import VoiceResponse, Connect
 
     campaign_id = "id with spaces & special=chars"
-    encoded = quote(campaign_id, safe="")
-    assert " " not in encoded
-    assert "&" not in encoded
-    assert "=" not in encoded
-    assert "id%20with%20spaces" in encoded
-    print("  PASS: TwiML URL encoding")
+    response = VoiceResponse()
+    connect = Connect()
+    stream = connect.stream(url="wss://example.com/media-stream")
+    stream.parameter(name="campaign_id", value=campaign_id)
+    response.append(connect)
+    xml = str(response)
+
+    assert 'url="wss://example.com/media-stream"' in xml
+    assert "?campaign_id=" not in xml
+    assert "id with spaces &amp; special=chars" in xml
+    print("  PASS: TwiML custom parameter XML escaping")
 
 
 # =========================================================================

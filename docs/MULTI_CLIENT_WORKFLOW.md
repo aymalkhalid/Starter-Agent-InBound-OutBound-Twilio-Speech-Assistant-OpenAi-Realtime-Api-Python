@@ -4,7 +4,7 @@ How to build a new voice agent for each client (real estate, lead qualifier, int
 
 **Model:** one client = one clone, one `.env`, one prompt, one Twilio number, one deploy. The starter repo stays generic; client-specific work lives in separate projects.
 
-Related guides: [Onboarding](./ONBOARDING.md) · [Configuration](./CONFIGURATION.md) · [Starter prompt mapping](./references/STARTER_PROMPT_MAPPING.md)
+Related guides: [Onboarding](./ONBOARDING.md) · [Prompt-as-code](./PROMPT_AS_CODE.md) · [Configuration](./CONFIGURATION.md) · [Starter prompt mapping](./references/STARTER_PROMPT_MAPPING.md)
 
 ---
 
@@ -31,7 +31,7 @@ SYSTEM_INSTRUCTIONS_PATH=prompts/acme_realestate.md
 AGENT_LABEL=acme_realestate
 ```
 
-That keeps client prompts out of the shared starter without building multi-tenant routing.
+That keeps client prompts out of the shared starter without building multi-tenant routing or Supabase prompt-profile infrastructure.
 
 ---
 
@@ -160,6 +160,7 @@ If you use a separate prompt file, **copy the full starter file first** — it m
 After edits:
 
 ```bash
+python scripts/preview_system_prompt.py
 pytest tests/test_system_instructions.py
 ```
 

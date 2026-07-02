@@ -16,7 +16,6 @@ import httpx
 from fastapi import FastAPI, WebSocket, Request, Query, Header, HTTPException, Body, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.websockets import WebSocketDisconnect
-from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 
 # Import our centralized configuration and organized services
 from config import Config
@@ -570,20 +569,11 @@ async def outbound_call_twiml(request: Request, campaign_id: str, contact_id: st
     """
     Return TwiML for an answered outbound call. Twilio fetches this URL when
     the callee picks up. Connects to the same /media-stream WebSocket with
-    outbound context params so the handler builds a campaign-specific prompt.
+    outbound context in Twilio custom parameters so the handler builds a
+    campaign-specific prompt after the stream start message arrives.
     """
     host = request.url.hostname
-    stream_url = (
-        f"wss://{host}/media-stream"
-        f"?direction=outbound"
-        f"&campaign_id={quote(campaign_id, safe='')}"
-        f"&contact_id={quote(contact_id, safe='')}"
-    )
-    response = VoiceResponse()
-    connect = Connect()
-    connect.stream(url=stream_url)
-    response.append(connect)
-    return HTMLResponse(content=str(response), media_type="application/xml")
+    return TwilioService.create_outbound_stream_response(host, campaign_id, contact_id)
 
 
 @app.api_route("/outbound-call-status", methods=["POST"])
@@ -1262,7 +1252,8 @@ async def handle_media_stream(websocket: WebSocket):
     connection_manager = WebSocketConnectionManager(websocket)
     # Event set when OpenAI sends session.updated; wait for it before first response so custom instructions are in effect
     connection_manager.state.session_updated_event = asyncio.Event()
-    # Parse query params (caller number for inbound; direction/campaign/contact for outbound)
+    # Parse legacy query params. New TwiML uses Twilio Stream <Parameter> values,
+    # which arrive later in start.customParameters.
     outbound_system_message: str | None = None
     try:
         qs = parse_qs(websocket.scope.get("query_string", b"").decode())
@@ -1275,7 +1266,7 @@ async def handle_media_stream(websocket: WebSocket):
             connection_manager.state.caller_phone_number = caller_number
             Log.event("Incoming caller number (traceability)", {
                 "incoming_caller_number": caller_number,
-                "source": "media-stream query (caller_number)",
+                "source": "legacy media-stream query (caller_number)",
             })
 
         if direction == "outbound" and campaign_id and contact_id:
@@ -1295,7 +1286,8 @@ async def handle_media_stream(websocket: WebSocket):
                 connection_manager.state.caller_phone_number = (contact.get("phone") or "").strip()
     except Exception:
         pass
-    # Defer session init when query string was empty so we can resolve outbound context from CallSid when "start" arrives
+    # Defer session init when context was not available up front so start.customParameters
+    # or the CallSid cache can decide inbound caller/outbound prompt context.
     defer_session_init = (outbound_system_message is None) and (not caller_number)
     openai_service = OpenAIService()
     audio_service = AudioService()
@@ -1320,11 +1312,24 @@ async def handle_media_stream(websocket: WebSocket):
             Log.event("Twilio stream started", {"streamSid": stream_sid})
             if defer_session_init:
                 call_sid = getattr(connection_manager.state, "call_sid", None)
-                outbound_ctx = TwilioService.get_outbound_context(call_sid) if call_sid else None
+                outbound_ctx = None
+                outbound_ctx_source = "none"
+                custom_campaign_id = getattr(connection_manager.state, "outbound_campaign_id", None)
+                custom_contact_id = getattr(connection_manager.state, "outbound_contact_id", None)
+                if custom_campaign_id and custom_contact_id:
+                    outbound_ctx = (custom_campaign_id, custom_contact_id)
+                    outbound_ctx_source = "twilio customParameters"
+                elif call_sid:
+                    outbound_ctx = TwilioService.get_outbound_context(call_sid)
+                    outbound_ctx_source = "CallSid cache" if outbound_ctx else "none"
                 if outbound_ctx:
                     ob_campaign_id, ob_contact_id = outbound_ctx
                     connection_manager.state.is_outbound_call = True  # so send_initial_greeting uses minimal item even if build fails
-                    Log.event("Outbound call stream (from CallSid cache)", {"campaign_id": ob_campaign_id, "contact_id": ob_contact_id})
+                    Log.event("Outbound call stream context", {
+                        "campaign_id": ob_campaign_id,
+                        "contact_id": ob_contact_id,
+                        "source": outbound_ctx_source,
+                    })
                     from services.outbound_service import build_outbound_system_message, get_contact_sync
                     outbound_system_message = await asyncio.to_thread(build_outbound_system_message, ob_campaign_id, ob_contact_id)
                     if not outbound_system_message:
@@ -1357,13 +1362,15 @@ async def handle_media_stream(websocket: WebSocket):
 
         async def handle_audio_delta(response: dict) -> None:
             """Handle audio delta from OpenAI."""
-            if openai_service.should_suppress_assistant_audio():
+            if openai_service.should_suppress_assistant_audio() and not openai_service.is_goodbye_pending():
                 return
+            if openai_service.should_suppress_assistant_audio() and openai_service.is_goodbye_pending():
+                openai_service.clear_assistant_audio_suppression()
             audio_data = openai_service.extract_audio_response_data(response)
             if audio_data and connection_manager.state.stream_sid:
                 # If we're in a goodbye flow, mark that farewell audio has started and capture its item_id
                 if openai_service.is_goodbye_pending():
-                    openai_service.mark_goodbye_audio_heard(audio_data.get('item_id'))
+                    openai_service.mark_goodbye_audio_heard(audio_data.get('item_id'), connection_manager)
                 audio_message = audio_service.process_outgoing_audio(
                     response, 
                     connection_manager.state.stream_sid
@@ -1413,6 +1420,7 @@ async def handle_media_stream(websocket: WebSocket):
 
         async def handle_other_openai_event(response: dict) -> None:
             """Handle other OpenAI events."""
+            is_response_done = response.get("type") == "response.done"
             if response.get("type") == "session.updated":
                 ev = getattr(connection_manager.state, "session_updated_event", None)
                 if ev is not None:
@@ -1432,9 +1440,11 @@ async def handle_media_stream(websocket: WebSocket):
                     handled = await openai_service.maybe_handle_tool_call(connection_manager, tool_call)
                     if handled and tool_call.get("name") == "wait_for_user":
                         await openai_service.finalize_wait_for_user(connection_manager, audio_service)
+                    if is_response_done:
+                        openai_service.clear_assistant_audio_suppression()
                     if handled:
                         return
-            if response.get("type") == "response.done":
+            if is_response_done:
                 openai_service.clear_assistant_audio_suppression()
             # If a goodbye was queued and we've heard its audio, finalize after the response completes
             if openai_service.should_finalize_on_event(response):
