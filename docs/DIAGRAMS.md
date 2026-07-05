@@ -16,7 +16,7 @@ For narrative context see [Architecture](./ARCHITECTURE.md). For the rendered po
 | 6 | [`wait_for_user` flow](#6-wait_for_user-flow) |
 | 7 | [Call record storage](#7-call-record-storage) |
 | 8 | [Human transfer](#8-human-transfer) |
-| 9 | [Outbound campaign](#9-outbound-campaign) |
+| 9 | [Outbound campaign and one-shot call triggers](#9-outbound-campaign-and-one-shot-call-triggers) |
 | 10 | [Call recording](#10-call-recording-and-transcription) |
 | 11 | [Module map](#11-module-map) |
 | 12 | [Configuration → behavior](#12-configuration--behavior) |
@@ -322,21 +322,37 @@ sequenceDiagram
 
 ---
 
-## 9. Outbound campaign
+## 9. Outbound campaign and one-shot call triggers
 
 Requires `OUTBOUND_ENABLED=true` with Twilio + Supabase.
 
 ```mermaid
 sequenceDiagram
     participant D as Dashboard
+    participant X as External lead source
     participant F as FastAPI
     participant OBS as outbound_service
     participant SB as Supabase
     participant T as Twilio
+    participant C as Callee
     participant MS as /media-stream
 
-    D->>F: POST /outbound/campaigns/{id}/start
-    F->>OBS: Dial contacts (Twilio REST)
+    alt Campaign bulk dial
+        D->>F: POST /outbound/campaigns/{id}/start
+        F->>OBS: run_campaign(campaign_id)
+        OBS->>SB: Load pending contacts
+    else Dashboard single contact dial
+        D->>F: POST /outbound/campaigns/{id}/contacts/{id}/call
+        F->>OBS: Load campaign + contact
+    else One-shot lead intake API
+        X->>F: POST /outbound/campaigns/{id}/trigger-call
+        F->>OBS: build_contact_from_lead_payload()
+        OBS->>SB: Insert outbound contact
+    end
+
+    OBS->>T: create_outbound_call(to=contact.phone)
+    T->>C: Ring callee
+    C-->>T: Answer
     T->>F: GET /outbound-call-twiml/{campaign_id}
     F-->>T: TwiML → wss://host/media-stream + outbound Parameters
     T->>MS: WebSocket connect
@@ -346,6 +362,11 @@ sequenceDiagram
     T->>F: POST /outbound-call-status
     OBS->>SB: Update contact status
 ```
+
+Missed-call AI callback uses the same Twilio/media-stream pipeline, but its
+entry route is `POST /missed-calls/{call_sid}/callback-ai` and it creates/reuses
+the hidden `__missed_call_callbacks__` campaign. It requires Twilio credentials,
+Supabase, and a public `OUTBOUND_BASE_URL`.
 
 ---
 

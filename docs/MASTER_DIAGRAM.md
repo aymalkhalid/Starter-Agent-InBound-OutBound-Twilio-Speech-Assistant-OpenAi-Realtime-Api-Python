@@ -4,7 +4,7 @@ Single-page visual reference for the Twilio + OpenAI Realtime voice-agent starte
 
 ![Master architecture diagram](./images/MasterArchitectureDiagram.png)
 
-For detailed per-topic flows, see [Diagrams](./DIAGRAMS.md) (23 indexed sections). Narrative context: [Architecture](./ARCHITECTURE.md).
+For detailed per-topic flows, see [Diagrams](./DIAGRAMS.md) (23 indexed sections). For copy-paste Mermaid blocks and ChatGPT image prompts, see [Copyable Mermaid](./COPYABLE_MERMAID.md). Narrative context: [Architecture](./ARCHITECTURE.md).
 
 ---
 
@@ -19,20 +19,21 @@ For detailed per-topic flows, see [Diagrams](./DIAGRAMS.md) (23 indexed sections
 
 Both directions **converge on the same WebSocket bridge**: `WS /media-stream` → `WebSocketConnectionManager` → `OpenAIService` → OpenAI Realtime.
 
-### Step 2 — Outbound triggers (3 paths, 1 pipeline)
+### Step 2 — Outbound triggers (4 paths, 1 pipeline)
 
-Outbound is not only campaigns. Three triggers share the same dial → TwiML → media-stream path:
+Outbound is not only campaigns. Four triggers share the same dial → TwiML → media-stream path:
 
 | Trigger | API / source | What happens |
 | --- | --- | --- |
 | **① Campaign bulk dial** | `POST /outbound/campaigns/{id}/start` | `run_campaign()` dials all `pending` contacts with concurrency control |
 | **② Single contact dial** | `POST /outbound/campaigns/{id}/contacts/{id}/call` | Dials one contact manually from dashboard |
-| **③ Missed-call AI callback** | `POST /missed-calls/{call_sid}/callback-ai` | Creates/reuses hidden campaign `__missed_call_callbacks__`, adds contact, then dials |
+| **③ One-shot lead intake API** | `POST /outbound/campaigns/{id}/trigger-call` | External systems such as GHL/n8n post one lead; app inserts the contact and dials immediately |
+| **④ Missed-call AI callback** | `POST /missed-calls/{call_sid}/callback-ai` | Creates/reuses hidden campaign `__missed_call_callbacks__`, adds contact, then dials |
 
-**Shared outbound pipeline (all three):**
+**Shared outbound pipeline (all four):**
 
 ```
-Dashboard trigger
+Dashboard/API trigger
   → outbound_service (Supabase campaign + contact)
   → TwilioService.create_outbound_call()
   → Twilio rings callee
@@ -43,7 +44,7 @@ Dashboard trigger
   → POST /outbound-call-status → update Supabase contact status
 ```
 
-Campaign type presets (`services/outbound_campaign_types.py`): `promo`, `appointment_confirmation`, `payment_reminder`, `follow_up`, `general`, `missed_call_callback`.
+Campaign type presets (`services/outbound_campaign_types.py`): `aesthetic_appointment_setter`, `promo`, `appointment_confirmation`, `payment_reminder`, `follow_up`, `general`, `missed_call_callback`.
 
 ### Step 3 — Inbound path
 
@@ -133,7 +134,7 @@ Runs inside `OpenAIService.maybe_handle_tool_call()` via thread pool (`run_in_ex
 | Lane | Key settings |
 | --- | --- |
 | Core agent | `OPENAI_API_KEY`, Twilio webhook → `/incoming-call` |
-| Outbound (all 3 triggers) | `OUTBOUND_ENABLED=true`, Twilio creds, Supabase, `OUTBOUND_BASE_URL` (public HTTPS) |
+| Outbound campaigns, single dial, one-shot API | `OUTBOUND_ENABLED=true`, Twilio creds, Supabase, `OUTBOUND_BASE_URL` (public HTTPS) |
 | Supabase CRM + dashboard | `CALL_RECORD_BACKEND=supabase`, `SUPABASE_URL`, `SUPABASE_KEY`, optional `DASHBOARD_USERS` |
 | Webhook CRM | `CALL_RECORD_BACKEND=webhook`, `WEBHOOK_URL` |
 | Google Calendar | `BOOKING_ENABLED=true`, `GOOGLE_CALENDAR_ID`, credentials JSON |
@@ -150,7 +151,7 @@ Paste into ChatGPT or any Mermaid renderer. Ask for **one subgraph per image** f
 ```mermaid
 flowchart TB
     %% VOICE AGENT STARTER — MASTER ARCHITECTURE
-    %% Inbound + Outbound (campaign + trigger-based) + CRM + Calendar
+    %% Inbound + Outbound (campaign + one-shot + callback) + CRM + Calendar
     %% Source: main.py · config.py · services/* · prompts/*
 
     subgraph ACTORS["👥 ACTORS"]
@@ -174,11 +175,12 @@ flowchart TB
             T_IN["Caller dials Twilio number"]
         end
 
-        subgraph OUTBOUND_T["OUTBOUND — 3 trigger paths"]
+        subgraph OUTBOUND_T["OUTBOUND — 4 trigger paths"]
             direction TB
             T_CAMP["① Campaign bulk<br/>POST /outbound/campaigns/{id}/start<br/>→ run_campaign()"]
             T_ONE["② Single contact<br/>POST …/contacts/{id}/call"]
-            T_MISS["③ Missed-call AI callback<br/>POST /missed-calls/{sid}/callback-ai<br/>→ __missed_call_callbacks__ campaign"]
+            T_API["③ One-shot lead intake API<br/>POST /outbound/campaigns/{id}/trigger-call<br/>→ add contact + dial now"]
+            T_MISS["④ Missed-call AI callback<br/>POST /missed-calls/{sid}/callback-ai<br/>→ __missed_call_callbacks__ campaign"]
         end
     end
 
@@ -273,7 +275,7 @@ flowchart TB
     %% OUTBOUND PATHS
     OPS --> T_CAMP & T_ONE & T_MISS
     OPS --> R_OUT_API & R_MISS_API
-    T_CAMP & T_ONE & T_MISS --> OBS["outbound_service.py"]
+    T_CAMP & T_ONE & T_API & T_MISS --> OBS["outbound_service.py"]
     OBS --> SB_CAMP & SB_CONT
     OBS -->|"Twilio REST dial"| TWILIO
     TWILIO -->|"callee answers"| R_OT
@@ -423,7 +425,7 @@ Render **one zone per image** from the Master diagram for best results.
 
 | Zone | Suggested prompt seed |
 | --- | --- |
-| **Call Triggers** | Split: left inbound (caller dials in), right three outbound triggers converging on Twilio |
+| **Call Triggers** | Split: left inbound (caller dials in), right four outbound triggers converging on Twilio |
 | **Shared Core** | Center hub: `/media-stream` bridge between Twilio and OpenAI with AudioService and 3 coroutines |
 | **Prompt Paths** | Fork: inbound markdown prompt vs outbound Supabase campaign template, merging at session.update |
 | **CRM Layer** | Supabase tables (leads, campaigns, contacts, app_settings) plus webhook to external CRM |
@@ -431,7 +433,7 @@ Render **one zone per image** from the Master diagram for best results.
 
 **Full poster prompt:**
 
-> Technical architecture poster for a Twilio + OpenAI voice agent. Top row: Inbound caller and 3 outbound triggers. Center: shared WebSocket media bridge. Bottom left: Supabase CRM. Bottom right: Google Calendar booking. Side: Dashboard operator. Color code: blue=inbound, green=outbound, orange=core, yellow=CRM, pink=calendar. Clean vector, 16:9.
+> Technical architecture poster for a Twilio + OpenAI voice agent. Top row: Inbound caller and 4 outbound triggers: campaign bulk, single contact, one-shot lead API, missed-call callback. Center: shared WebSocket media bridge. Bottom left: Supabase CRM. Bottom right: Google Calendar booking. Side: Dashboard operator. Color code: blue=inbound, green=outbound, orange=core, yellow=CRM, pink=calendar. Clean vector, 16:9.
 
 ---
 
@@ -442,7 +444,8 @@ The PNG poster (`images/MasterArchitectureDiagram.png`) matches the architecture
 | Topic | Accurate in diagram | Caveat |
 | --- | --- | --- |
 | Shared `/media-stream` core | Yes | Same bridge for inbound and all outbound triggers |
-| Outbound trigger ③ (missed-call callback) | Yes | Does **not** require `OUTBOUND_ENABLED`; **does** require Supabase + public `OUTBOUND_BASE_URL` |
+| Outbound trigger ③ (one-shot lead API) | Yes | Requires `OUTBOUND_ENABLED=true` + Twilio + Supabase + public `OUTBOUND_BASE_URL` |
+| Outbound trigger ④ (missed-call callback) | Yes | Does **not** require `OUTBOUND_ENABLED`; **does** require Twilio creds + Supabase + public `OUTBOUND_BASE_URL` |
 | Outbound triggers ①② | Yes | Require `OUTBOUND_ENABLED=true` + Twilio + Supabase |
 | Realtime coroutines | Yes | `receive_from_twilio()`, `receive_from_openai()`, `renew_openai_session()` |
 | Prompt paths | Yes | Outbound uses Supabase `message_template` (no industry YAML profiles) |
