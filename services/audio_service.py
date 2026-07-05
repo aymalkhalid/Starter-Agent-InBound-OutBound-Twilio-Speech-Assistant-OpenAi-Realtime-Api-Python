@@ -1,4 +1,5 @@
 import base64
+import asyncio
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 from config import Config
@@ -219,6 +220,8 @@ class AudioService:
         self.format_converter = AudioFormatConverter()
         self.timing_manager = AudioTimingManager()
         self.buffer_manager = AudioBufferManager()
+        self._marks_drained_event = asyncio.Event()
+        self._marks_drained_event.set()
     
     def process_incoming_audio(self, twilio_data: dict) -> Optional[Dict[str, Any]]:
         """
@@ -323,6 +326,7 @@ class AudioService:
             Twilio mark message
         """
         self.buffer_manager.add_mark(mark_name)
+        self._marks_drained_event.clear()
         return {
             "event": "mark",
             "streamSid": stream_id,
@@ -348,8 +352,24 @@ class AudioService:
     def handle_mark_event(self) -> None:
         """Handle a mark event from Twilio."""
         removed_mark = self.buffer_manager.remove_mark()
+        if not self.buffer_manager.has_pending_marks():
+            self._marks_drained_event.set()
         if Config.SHOW_TIMING_MATH and removed_mark:
             print(f"Processed mark: {removed_mark}")
+
+    def pending_mark_count(self) -> int:
+        """Return the number of Twilio playback marks still pending."""
+        return len(self.buffer_manager.mark_queue)
+
+    async def wait_for_marks_drained(self, timeout_seconds: float) -> bool:
+        """Wait until Twilio has acknowledged playback marks, bounded by timeout."""
+        if not self.buffer_manager.has_pending_marks():
+            return True
+        try:
+            await asyncio.wait_for(self._marks_drained_event.wait(), timeout=max(0.0, float(timeout_seconds)))
+            return True
+        except asyncio.TimeoutError:
+            return False
     
     def calculate_interruption_timing(self) -> Optional[int]:
         """

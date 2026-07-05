@@ -16,6 +16,11 @@ from services import webhook_service as _legacy_storage
 
 CallRecordUpdateSchemaError = _legacy_storage.LeadUpdateSchemaError
 CALL_RECORD_BACKEND_NAMES = _legacy_storage.LEAD_BACKEND_NAMES
+APPOINTMENT_SETTER_OUTCOME_TAGS = _legacy_storage.APPOINTMENT_SETTER_OUTCOME_TAGS
+
+
+def normalize_call_record_outcome_tag(value: Any) -> str | None:
+    return _legacy_storage.normalize_appointment_setter_outcome_tag(value)
 
 
 def _effective_backend() -> str:

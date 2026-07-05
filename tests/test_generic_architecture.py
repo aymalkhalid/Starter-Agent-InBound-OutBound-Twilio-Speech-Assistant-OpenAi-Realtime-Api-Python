@@ -31,3 +31,14 @@ def test_call_record_facade_is_primary_route_surface():
     assert '@app.get("/leads"' not in main_py
     assert 'from services.call_records_service import' in main_py
     assert 'from services.lead_events import' not in main_py
+
+
+def test_call_record_modal_uses_compact_call_sid_lifecycle_display():
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+
+    assert "function callSidOverviewHtml(" in html
+    assert '"<dt>Call SID</dt><dd>" + callSidOverviewHtml(callContext) + "</dd>"' in html
+    assert "<dt>Latest Call SID</dt>" not in html
+    assert "<dt>Primary Call SID</dt>" not in html
+    assert "<dt>Related Call SIDs</dt>" not in html
+    assert "related call attempts" in html

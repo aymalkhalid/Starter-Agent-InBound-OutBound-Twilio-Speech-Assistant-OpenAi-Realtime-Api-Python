@@ -771,6 +771,36 @@
       color: #0369a1;
     }
 
+    .status-badge.interested-callback {
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
+    .status-badge.declined {
+      background: #f3f4f6;
+      color: #374151;
+    }
+
+    .status-badge.do-not-contact {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-badge.wrong-person {
+      background: #e5e7eb;
+      color: #4b5563;
+    }
+
+    .status-badge.transfer-needed {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-badge.booking-error {
+      background: #ffe4e6;
+      color: #be123c;
+    }
+
     .status-badge.cancelled {
       background: #e5e7eb;
       color: #4b5563;
@@ -806,6 +836,27 @@
       color: #047857;
     }
 
+    .direction-pill {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
+    .direction-pill.inbound {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .direction-pill.outbound {
+      background: #dcfce7;
+      color: #166534;
+    }
+
     .priority.high {
       color: var(--priority-high);
     }
@@ -834,6 +885,20 @@
       gap: 0.4rem;
     }
 
+    .call-sid-overview {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .call-sid-main,
+    .call-sid-history-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+    }
+
     .call-sid-chip {
       display: inline-flex;
       align-items: center;
@@ -844,6 +909,35 @@
       font-size: 0.78rem;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       word-break: break-all;
+    }
+
+    .call-sid-label {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.16rem 0.45rem;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .call-history-details summary {
+      width: max-content;
+      max-width: 100%;
+      cursor: pointer;
+      color: var(--accent);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .call-sid-history {
+      list-style: none;
+      padding: 0.45rem 0 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
     }
 
     .custom-audio-wrap {
@@ -1725,39 +1819,186 @@
       font-weight: 500;
     }
 
+    /* Outbound: shared buttons */
+    .ob-btn {
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 9px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    .ob-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .ob-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .ob-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .ob-btn.ob-btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .ob-btn.ob-btn-secondary:hover:not(:disabled) {
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+
+    .ob-btn.ob-btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+    }
+
+    .ob-btn.ob-btn-primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    .ob-btn.ob-btn-success {
+      background: #059669;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+    }
+
+    .ob-btn.ob-btn-success:hover:not(:disabled) {
+      background: #047857;
+    }
+
+    .ob-btn.ob-btn-warn {
+      background: #d97706;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+    }
+
+    .ob-btn.ob-btn-warn:hover:not(:disabled) {
+      background: #b45309;
+    }
+
+    .ob-btn.ob-btn-danger {
+      background: var(--surface);
+      color: #dc2626;
+      border-color: rgba(220, 38, 38, 0.35);
+    }
+
+    .ob-btn.ob-btn-danger:hover:not(:disabled) {
+      background: #fef2f2;
+      border-color: #dc2626;
+    }
+
     /* Outbound: campaign list view */
     .ob-campaign-list {
       list-style: none;
       padding: 0;
       margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
     }
 
     .ob-campaign-list li {
       display: flex;
       align-items: center;
       gap: 1rem;
-      padding: 0.75rem 0;
-      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
       cursor: pointer;
-      transition: background 0.15s;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
     }
 
     .ob-campaign-list li:hover {
-      background: var(--accent-soft);
+      border-color: var(--accent);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+
+    .ob-campaign-list .ob-c-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
     }
 
     .ob-campaign-list .ob-c-name {
       font-weight: 600;
-      flex: 1;
-      min-width: 0;
+      font-size: 0.95rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .ob-campaign-list .ob-c-type {
-      font-size: 0.8rem;
+    .ob-campaign-list .ob-c-meta {
+      font-size: 0.75rem;
       color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ob-campaign-list .ob-c-del {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .ob-campaign-list .ob-c-del:hover {
+      background: #fef2f2;
+      color: #dc2626;
+      border-color: rgba(220, 38, 38, 0.35);
+    }
+
+    .ob-campaign-list .ob-c-del svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .ob-empty {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      background: #fafbfc;
+    }
+
+    .ob-empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .ob-empty span {
+      font-size: 0.85rem;
     }
 
     .ob-badge {
@@ -1789,30 +2030,49 @@
       color: #1e40af;
     }
 
-    /* Outbound: campaign editor two-panel layout */
+    .ob-badge.pending {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    .ob-badge.calling {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .ob-badge.failed {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .ob-badge.skipped {
+      background: #f3e8ff;
+      color: #7e22ce;
+    }
+
+    /* Outbound: campaign editor stacked layout */
     .ob-editor {
-      display: grid;
-      grid-template-columns: 1fr 1.6fr;
-      gap: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
       min-height: 0;
       flex: 1;
     }
 
-    @media (max-width: 700px) {
-      .ob-editor {
+    .ob-config-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 2fr) minmax(160px, 1.2fr) 110px;
+      gap: 1rem;
+      align-items: end;
+    }
+
+    @media (max-width: 800px) {
+      .ob-config-row {
         grid-template-columns: 1fr;
       }
     }
 
-    .ob-editor .ob-config {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      min-height: 0;
-      height: 100%;
-    }
-
-    .ob-editor .ob-config label {
+    .ob-config-row .ob-field label {
       font-size: 0.8rem;
       font-weight: 600;
       color: var(--muted);
@@ -1820,9 +2080,8 @@
       margin-bottom: 0.2rem;
     }
 
-    .ob-editor .ob-config input,
-    .ob-editor .ob-config select,
-    .ob-editor .ob-config textarea {
+    .ob-config-row .ob-field input,
+    .ob-config-row .ob-field select {
       font-family: inherit;
       width: 100%;
       padding: 0.5rem 0.6rem;
@@ -1833,10 +2092,79 @@
       color: var(--text);
     }
 
-    .ob-editor .ob-config textarea {
-      min-height: 160px;
+    .ob-script-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      min-height: 0;
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+      background: #fafbfc;
+      box-shadow: var(--shadow);
+    }
+
+    .ob-script-panel .ob-script-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .ob-script-panel label {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .ob-script-hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .ob-script-panel textarea {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      width: 100%;
+      min-height: 300px;
+      max-height: 42vh;
+      padding: 0.75rem 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      background: var(--surface);
+      color: var(--text);
       resize: vertical;
-      flex: 1;
+    }
+
+    .ob-script-panel textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .ob-reset-script-btn {
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.35rem 0.7rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .ob-reset-script-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-soft);
     }
 
     /* Outbound: contact spreadsheet */
@@ -1885,22 +2213,37 @@
 
     .ob-contacts-table {
       width: 100%;
+      min-width: 1180px;
       border-collapse: collapse;
       font-size: 0.8rem;
     }
 
     .ob-contacts-table th {
       text-align: left;
-      padding: 0.4rem 0.5rem;
+      padding: 0.5rem 0.5rem;
       color: var(--muted);
       font-weight: 600;
       border-bottom: 2px solid var(--border);
-      font-size: 0.75rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      z-index: 1;
     }
 
     .ob-contacts-table td {
-      padding: 0.3rem 0.4rem;
+      padding: 0.35rem 0.4rem;
       border-bottom: 1px solid var(--border);
+    }
+
+    .ob-contacts-table tbody tr:nth-child(even):not(.ob-row-calling) {
+      background: #fafbfc;
+    }
+
+    .ob-contacts-table tbody tr:hover:not(.ob-row-calling) {
+      background: var(--accent-soft);
     }
 
     .ob-contacts-table input {
@@ -1993,7 +2336,7 @@
     .ob-contacts-wrap {
       max-height: none;
       flex: 1;
-      overflow-y: auto;
+      overflow: auto;
       border: 1px solid var(--border);
       border-radius: 8px;
     }
@@ -2021,6 +2364,70 @@
       font-size: 0.8rem;
       color: var(--muted);
       margin-top: 0.25rem;
+    }
+
+    .ob-campaign-list .ob-c-stats {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+    }
+
+    .ob-editor-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      margin-bottom: 1rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .ob-editor-header .ob-editor-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }
+
+    .ob-editor-header h3 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .ob-editor-header .ob-editor-subtitle {
+      margin: 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .ob-confirm-overlay {
+      z-index: 1100;
+    }
+
+    .ob-confirm-modal {
+      max-width: 420px;
+    }
+
+    .ob-confirm-modal .modal-body p {
+      margin: 0;
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 0.9rem;
+    }
+
+    .ob-confirm-modal .modal-footer {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.65rem;
+      background: #fafbfc;
+      border-radius: 0 0 12px 12px;
     }
   </style>
 </head>
@@ -2085,6 +2492,12 @@
       </div>
     </header>
     <div class="filters">
+      <label>Direction</label>
+      <select id="filter-call-direction">
+        <option value="">All</option>
+        <option value="inbound">Inbound</option>
+        <option value="outbound">Outbound</option>
+      </select>
       <label>Priority</label>
       <select id="filter-priority">
         <option value="">All</option>
@@ -2118,6 +2531,12 @@
         <option value="pending">Pending</option>
         <option value="in_progress">In progress</option>
         <option value="booked">Booked</option>
+        <option value="interested-callback">Interested callback</option>
+        <option value="declined">Declined</option>
+        <option value="do-not-contact">Do not contact</option>
+        <option value="wrong-person">Wrong person</option>
+        <option value="transfer-needed">Transfer needed</option>
+        <option value="booking-error">Booking error</option>
         <option value="cancelled">Cancelled</option>
         <option value="completed">Completed</option>
         <option value="finalized">Finalized</option>
@@ -2148,6 +2567,7 @@
         <thead>
           <tr>
             <th>Time</th>
+            <th>Direction</th>
             <th>Name</th>
             <th>Phone</th>
             <th>Priority</th>
@@ -2162,7 +2582,7 @@
         </thead>
         <tbody id="tbody">
           <tr>
-            <td colspan="11" class="empty">Loading…</td>
+            <td colspan="12" class="empty">Loading…</td>
           </tr>
         </tbody>
       </table>
@@ -2252,6 +2672,26 @@
                 </select></div>
               <div class="field"><label for="setting-ASSISTANT_LANGUAGE">Default language</label><input type="text"
                   id="setting-ASSISTANT_LANGUAGE" name="ASSISTANT_LANGUAGE" placeholder="English" /></div>
+              <div class="field"><label for="setting-ASSISTANT_TONE">Tone</label><input type="text"
+                  id="setting-ASSISTANT_TONE" name="ASSISTANT_TONE" placeholder="warm professional" /></div>
+              <div class="field"><label for="setting-ASSISTANT_WARMTH">Warmth</label><select
+                  id="setting-ASSISTANT_WARMTH" name="ASSISTANT_WARMTH">
+                  <option value="neutral">neutral</option>
+                  <option value="warm">warm</option>
+                  <option value="very_warm">very warm</option>
+                </select></div>
+              <div class="field"><label for="setting-ASSISTANT_EXPRESSIVENESS">Expressiveness</label><select
+                  id="setting-ASSISTANT_EXPRESSIVENESS" name="ASSISTANT_EXPRESSIVENESS">
+                  <option value="reserved">reserved</option>
+                  <option value="balanced">balanced</option>
+                  <option value="expressive">expressive</option>
+                </select></div>
+              <div class="field"><label for="setting-ASSISTANT_PACING">Pacing</label><select
+                  id="setting-ASSISTANT_PACING" name="ASSISTANT_PACING">
+                  <option value="relaxed">relaxed</option>
+                  <option value="moderate">moderate</option>
+                  <option value="brisk">brisk</option>
+                </select></div>
               <div class="field"><label for="setting-LANGUAGE_SWITCH_POLICY">Language switching</label><select
                   id="setting-LANGUAGE_SWITCH_POLICY" name="LANGUAGE_SWITCH_POLICY">
                   <option value="explicit_or_substantive">explicit or substantive</option>
@@ -2283,6 +2723,10 @@
               <div class="field"><label for="setting-GOOGLE_CALENDAR_ID">Google Calendar ID</label><input type="text"
                   id="setting-GOOGLE_CALENDAR_ID" name="GOOGLE_CALENDAR_ID"
                   placeholder="e.g. @group.calendar.google.com or primary" /></div>
+              <div class="field"><label for="setting-TIMEZONE">Appointment timezone</label><input type="text"
+                  id="setting-TIMEZONE" name="TIMEZONE" placeholder="America/Los_Angeles" />
+                <div class="field-note">IANA timezone used for booking authority and dashboard filters.</div>
+              </div>
               <div class="field"><label for="setting-BOOKING_SLOT_DURATION_MINUTES">Slot duration
                   (minutes)</label><input type="number" id="setting-BOOKING_SLOT_DURATION_MINUTES"
                   name="BOOKING_SLOT_DURATION_MINUTES" min="1" /></div>
@@ -2345,6 +2789,22 @@
     </div>
 
     <!-- Outbound campaign modal -->
+    <div class="modal-overlay ob-confirm-overlay" id="ob-confirm-overlay" role="dialog" aria-modal="true"
+      aria-labelledby="ob-confirm-title">
+      <div class="modal ob-confirm-modal">
+        <div class="modal-header">
+          <h2 id="ob-confirm-title">Delete campaign?</h2>
+        </div>
+        <div class="modal-body">
+          <p id="ob-confirm-message"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="ob-confirm-cancel" class="ob-btn ob-btn-secondary">Cancel</button>
+          <button type="button" id="ob-confirm-ok" class="ob-btn ob-btn-danger">Delete</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay outbound-modal" id="outbound-modal" role="dialog" aria-modal="true"
       aria-labelledby="outbound-modal-title">
       <div class="modal">
@@ -2355,10 +2815,14 @@
         <div class="modal-body" id="outbound-modal-body">
           <!-- Campaign list view (shown first) -->
           <div id="ob-list-view">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:0.75rem;">
               <span id="ob-list-status" class="status">Loading…</span>
-              <button type="button" id="ob-new-campaign-btn"
-                style="background:#059669;color:#fff;border:none;padding:0.45rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">+
+              <button type="button" id="ob-new-campaign-btn" class="ob-btn ob-btn-success">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"
+                  stroke-linecap="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
                 New Campaign</button>
             </div>
             <ul class="ob-campaign-list" id="ob-campaign-list"></ul>
@@ -2367,21 +2831,35 @@
           <div id="ob-editor-view" style="display:none;flex:1;flex-direction:column;">
             <div style="margin-bottom:0.75rem;">
               <button type="button" id="ob-back-to-list"
-                style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:0.85rem;">&larr;
+                style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:0.85rem;padding:0;">&larr;
                 Back to campaigns</button>
             </div>
+            <div id="ob-editor-header" class="ob-editor-header" style="display:none;">
+              <div class="ob-editor-title-row">
+                <h3 id="ob-editor-title">Campaign</h3>
+                <span id="ob-editor-status" class="ob-badge draft">draft</span>
+              </div>
+              <p id="ob-editor-subtitle" class="ob-editor-subtitle"></p>
+            </div>
             <div class="ob-editor">
-              <div class="ob-config">
-                <div><label for="ob-name">Campaign name</label><input type="text" id="ob-name"
+              <div class="ob-config-row">
+                <div class="ob-field"><label for="ob-name">Campaign name</label><input type="text" id="ob-name"
                     placeholder="e.g. March Promo" /></div>
-                <div><label for="ob-type">Type</label><select id="ob-type">
+                <div class="ob-field"><label for="ob-type">Type</label><select id="ob-type">
                     <option value="general">General</option>
                   </select></div>
-                <div style="display:flex;flex-direction:column;flex:1;min-height:0;"><label for="ob-message">Message /
-                    script</label><textarea id="ob-message" placeholder="AI instructions for this campaign…"></textarea>
+                <div class="ob-field"><label for="ob-concurrency">Concurrency</label><input type="number"
+                    id="ob-concurrency" value="1" min="1" max="10" /></div>
+              </div>
+              <div class="ob-script-panel">
+                <div class="ob-script-header">
+                  <label for="ob-message">Message / script</label>
+                  <button type="button" id="ob-reset-script-btn" class="ob-reset-script-btn"
+                    title="Reload the built-in default for the selected campaign type">Reset to default</button>
                 </div>
-                <div><label for="ob-concurrency">Concurrency</label><input type="number" id="ob-concurrency" value="1"
-                    min="1" max="10" /></div>
+                <p id="ob-script-hint" class="ob-script-hint"></p>
+                <textarea id="ob-message"
+                  placeholder="AI instructions for this campaign — prefilled from the campaign type when available…"></textarea>
               </div>
               <div class="ob-contacts-panel">
                 <div class="ob-contacts-toolbar">
@@ -2398,8 +2876,12 @@
                         <th>Name</th>
                         <th>Phone</th>
                         <th>Email</th>
+                        <th>Lead Offer</th>
+                        <th>Timezone</th>
+                        <th>Callback</th>
                         <th>Extra</th>
-                        <th></th>
+                        <th>Status</th>
+                        <th>Actions</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -2418,16 +2900,19 @@
         </div>
         <div class="modal-footer" id="outbound-modal-footer">
           <span class="status" id="ob-footer-status"></span>
-          <button type="button" id="ob-cancel-btn"
-            style="padding:0.5rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-weight:500;">Cancel</button>
-          <button type="button" id="ob-save-btn"
-            style="padding:0.5rem 1.25rem;border-radius:8px;border:none;background:#0ea5e9;color:#fff;cursor:pointer;font-weight:600;display:none;">Save
+          <button type="button" id="ob-delete-btn" class="ob-btn ob-btn-danger" style="display:none;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Delete</button>
+          <button type="button" id="ob-cancel-btn" class="ob-btn ob-btn-secondary">Cancel</button>
+          <button type="button" id="ob-save-btn" class="ob-btn ob-btn-primary" style="display:none;">Save
             Draft</button>
-          <button type="button" id="ob-start-btn"
-            style="padding:0.5rem 1.25rem;border-radius:8px;border:none;background:#059669;color:#fff;cursor:pointer;font-weight:600;display:none;">Start
+          <button type="button" id="ob-start-btn" class="ob-btn ob-btn-success" style="display:none;">Start
             Campaign</button>
-          <button type="button" id="ob-pause-btn"
-            style="padding:0.5rem 1.25rem;border-radius:8px;border:none;background:#d97706;color:#fff;cursor:pointer;font-weight:600;display:none;">Pause</button>
+          <button type="button" id="ob-pause-btn" class="ob-btn ob-btn-warn" style="display:none;">Pause</button>
         </div>
       </div>
     </div>
@@ -2516,6 +3001,12 @@
       { value: "pending", label: "Pending" },
       { value: "in_progress", label: "In progress" },
       { value: "booked", label: "Booked" },
+      { value: "interested-callback", label: "Interested callback" },
+      { value: "declined", label: "Declined" },
+      { value: "do-not-contact", label: "Do not contact" },
+      { value: "wrong-person", label: "Wrong person" },
+      { value: "transfer-needed", label: "Transfer needed" },
+      { value: "booking-error", label: "Booking error" },
       { value: "cancelled", label: "Cancelled" },
       { value: "completed", label: "Completed" },
       { value: "finalized", label: "Finalized" },
@@ -2534,6 +3025,7 @@
       has_address: false,
       is_spam: false,
       status: "",
+      call_direction: "",
       address: "",
     };
     var POLL_INTERVAL_MS = 3000;
@@ -2632,14 +3124,48 @@
       if (state.has_address) params.set("has_address", "true");
       if (state.is_spam) params.set("is_spam", "true");
       if (state.status) params.set("status", state.status);
+      if (state.call_direction) params.set("call_direction", state.call_direction);
       if (state.address) params.set("address", state.address);
       return "/calls?" + params.toString();
+    }
+
+    function directionPill(direction) {
+      var value = String(direction || "inbound").toLowerCase();
+      if (value !== "inbound" && value !== "outbound") value = "inbound";
+      return '<span class="direction-pill ' + value + '">' + value + '</span>';
+    }
+
+    function recordDirection(r) {
+      if (!r) return "inbound";
+      var value = String(r.call_direction || "").trim().toLowerCase();
+      if (value === "inbound" || value === "outbound") return value;
+      var metadata = metadataObject(r.metadata);
+      value = String(metadata.call_direction || "").trim().toLowerCase();
+      if (value === "inbound" || value === "outbound") return value;
+      return "inbound";
+    }
+
+    function hasActiveRecordFilters() {
+      return !!(state.priority || state.date_from || state.date_to || state.has_booking || state.has_address || state.is_spam || state.status || state.call_direction || state.address);
     }
 
     function statusBadgeClass(s) {
       if (!s) return "pending";
       var v = (s + "").toLowerCase();
-      if (["in_progress", "booked", "cancelled", "completed", "finalized", "spam"].indexOf(v) >= 0) return v;
+      if ([
+        "in_progress",
+        "booked",
+        "interested-callback",
+        "declined",
+        "do-not-contact",
+        "wrong-person",
+        "transfer-needed",
+        "booking-error",
+        "cancelled",
+        "completed",
+        "finalized",
+        "spam"
+      ].indexOf(v) >= 0) return v;
       return "pending";
     }
 
@@ -2664,7 +3190,10 @@
 
     function bookingDisplay(slot) {
       if (!slot) return "—";
-      return slot.display || slot.date || slot.date_time || slot.slot_start_iso || "—";
+      var base = slot.display || slot.appointment_display || slot.date || slot.date_time || slot.slot_start_iso || "—";
+      var caller = slot.caller_display || "";
+      if (caller && caller !== base) return base + " / caller local: " + caller;
+      return base;
     }
 
     function sortAppointments(list) {
@@ -2769,12 +3298,51 @@
       }).join("") + "</div>";
     }
 
+    function callSidOverviewHtml(callContext) {
+      var latest = String((callContext && callContext.latest) || "").trim();
+      var primary = String((callContext && callContext.primary) || "").trim();
+      var related = (callContext && Array.isArray(callContext.related)) ? callContext.related.slice() : [];
+      var unique = [];
+      related.concat([primary, latest]).forEach(function (sid) {
+        sid = String(sid || "").trim();
+        if (!sid || sid === "—" || unique.indexOf(sid) >= 0) return;
+        unique.push(sid);
+      });
+      latest = latest && latest !== "—" ? latest : "";
+      primary = primary && primary !== "—" ? primary : "";
+      var mainSid = latest || primary || unique[0] || "";
+      if (!mainSid) return "—";
+      if (unique.indexOf(mainSid) < 0) unique.unshift(mainSid);
+
+      function roleLabels(sid) {
+        var labels = [];
+        if (latest && sid === latest) labels.push("latest");
+        if (primary && sid === primary && sid !== latest) labels.push("primary");
+        if (!labels.length) labels.push("related");
+        return labels.map(function (label) {
+          return "<span class=\"call-sid-label\">" + escapeHtml(label) + "</span>";
+        }).join("");
+      }
+
+      var mainHtml = "<div class=\"call-sid-main\"><span class=\"call-sid-chip\">" + escapeHtml(mainSid) + "</span>" + roleLabels(mainSid) + "</div>";
+      if (unique.length <= 1) {
+        return "<div class=\"call-sid-overview\">" + mainHtml + "</div>";
+      }
+      var history = unique.map(function (sid) {
+        return "<li class=\"call-sid-history-row\"><span class=\"call-sid-chip\">" + escapeHtml(sid) + "</span>" + roleLabels(sid) + "</li>";
+      }).join("");
+      return "<div class=\"call-sid-overview\">" + mainHtml +
+        "<details class=\"call-history-details\"><summary>" + unique.length + " related call attempts</summary>" +
+        "<ol class=\"call-sid-history\">" + history + "</ol></details></div>";
+    }
+
     function renderLead(r, index) {
       const bookingCell = bookingCellHtml(r);
       const isSpam = (r.lead_status || "").toLowerCase() === "spam";
       return (
         "<tr" + (isSpam ? " class=\"row-spam\"" : "") + " data-index=\"" + index + "\">" +
         "<td class=\"cell-mono\">" + formatTime(r.created_at || r.timestamp) + "</td>" +
+        "<td>" + directionPill(recordDirection(r)) + "</td>" +
         "<td>" + (r.lead_name || "—") + "</td>" +
         "<td class=\"cell-mono\">" + (r.lead_phone || "—") + "</td>" +
         "<td><span class=\"priority-pill " + priorityClass(r.priority) + "\">" + (r.priority || "—") + "</span></td>" +
@@ -2879,19 +3447,18 @@
         "<dl>" +
         "<dt>Name</dt><dd><input type=\"text\" id=\"modal-lead-name\" class=\"modal-edit\" value=\"" + (lead.lead_name || "").replace(/"/g, "&quot;").replace(/</g, "&lt;") + "\" placeholder=\"Contact name\" /></dd>" +
         "<dt>Email / Phone</dt><dd>" + ([lead.lead_email, lead.lead_phone].filter(Boolean).join(", ") || "—") + "</dd>" +
+        "<dt>Direction</dt><dd>" + directionPill(recordDirection(lead)) + "</dd>" +
         "<dt>Priority</dt><dd><span class=\"priority " + priorityClass(lead.priority) + "\">" + (lead.priority || "—") + "</span></dd>" +
         "<dt>Preferred callback time</dt><dd>" + (lead.preferred_callback_time || "—") + "</dd>" +
         "<dt>Issue summary</dt><dd>" + (lead.issue_summary || "—") + "</dd>" +
         "<dt>Call summary</dt><dd>" + (lead.call_summary || "—") + "</dd>" +
         "<dt>Location</dt><dd><input type=\"text\" id=\"modal-service-address\" class=\"modal-edit\" value=\"" + (lead.service_address || "").replace(/"/g, "&quot;").replace(/</g, "&lt;") + "\" placeholder=\"Location\" /></dd>" +
         "<dt>Booking</dt><dd>" + bookingHtml + "</dd>" +
-        "<dt>Recording</dt><dd>" + (function () { var r = lead.recording_link; if (!r) return "—"; var sid = (r.match(/\/Recordings\/(RE[a-fA-F0-9]{32})/) || [])[1]; if (!sid) return "<a href=\"" + r.replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener\">" + r + "</a>"; var playUrl = "/recordings/" + sid + "/media"; if (window.DASHBOARD_KEY) playUrl += "?key=" + encodeURIComponent(window.DASHBOARD_KEY); var downloadUrl = playUrl + (playUrl.indexOf("?") >= 0 ? "&" : "?") + "download=1"; var safeUrl = playUrl.replace(/"/g, "&quot;"); var hasTranscript = (lead.transcript || "").trim().length > 0; var showEnhance = lead.id && !lead.transcript_enhanced_at && hasTranscript; var btn = hasTranscript ? (showEnhance ? " <button type=\"button\" id=\"modal-enhance-transcript\" class=\"btn-generate-transcript\" data-lead-id=\"" + (lead.id || "").replace(/"/g, "&quot;") + "\">Enhance transcript</button>" : "") : " <button type=\"button\" id=\"modal-generate-transcript\" class=\"btn-generate-transcript\" data-recording-sid=\"" + sid + "\" data-lead-id=\"" + (lead.id || "").replace(/"/g, "&quot;") + "\">Generate transcript</button>"; return "<div class=\"custom-audio-wrap\"><audio preload=\"metadata\" src=\"" + safeUrl + "\" class=\"modal-audio-src\"></audio><button type=\"button\" class=\"custom-audio-play\" aria-label=\"Play\">▶</button><span class=\"custom-audio-time\">0:00 / 0:00</span><input type=\"range\" class=\"custom-audio-seek\" min=\"0\" max=\"100\" value=\"0\"></div> <a href=\"" + downloadUrl.replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener\">Download</a>" + btn; })() + "</dd>" +
+        "<dt>Recording</dt><dd>" + (function () { var r = lead.recording_link; if (!r) return "—"; var sid = (r.match(/\/Recordings\/(RE[a-fA-F0-9]{32})/) || [])[1]; if (!sid) return "<a href=\"" + r.replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener\">" + r + "</a>"; var playUrl = "/recordings/" + sid + "/media"; if (window.DASHBOARD_KEY) playUrl += "?key=" + encodeURIComponent(window.DASHBOARD_KEY); var downloadUrl = playUrl + (playUrl.indexOf("?") >= 0 ? "&" : "?") + "download=1"; var safeUrl = playUrl.replace(/"/g, "&quot;"); var hasTranscript = (lead.transcript || "").trim().length > 0; var showEnhance = lead.id && !lead.transcript_enhanced_at && hasTranscript; var btn = hasTranscript ? (showEnhance ? " <button type=\"button\" id=\"modal-enhance-transcript\" class=\"btn-generate-transcript\" data-lead-id=\"" + (lead.id || "").replace(/"/g, "&quot;") + "\">Enhance transcript</button>" : "") : " <button type=\"button\" id=\"modal-generate-transcript\" class=\"btn-generate-transcript\" data-recording-sid=\"" + sid + "\" data-lead-id=\"" + (lead.id || "").replace(/"/g, "&quot;") + "\">Generate transcript</button>"; return "<div class=\"custom-audio-wrap\"><audio preload=\"metadata\" src=\"" + safeUrl + "\" class=\"modal-audio-src\"></audio><button type=\"button\" class=\"custom-audio-play\" aria-label=\"Play\">▶</button><span class=\"custom-audio-time\">0:00 / 0:00</span><input type=\"range\" class=\"custom-audio-seek\" min=\"0\" max=\"0\" step=\"0.01\" value=\"0\" disabled></div> <a href=\"" + downloadUrl.replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener\">Download</a>" + btn; })() + "</dd>" +
         "<dt>Transcript</dt>" + (lead.transcript_enhanced_at ? " <span class=\"muted\" style=\"font-weight:normal\">(Enhanced)</span>" : "") + "<dd id=\"modal-transcript-dd\" class=\"modal-transcript\">" + (lead.transcript || "—") + "</dd>" +
         "<dt>Transcript summary</dt><dd id=\"modal-transcript-summary-dd\" class=\"modal-transcript-summary\">" + (lead.transcript_summary || "—") + "</dd>" +
         "<dt>Issues / important details</dt><dd id=\"modal-transcript-issues-dd\" class=\"modal-transcript-issues\">" + (lead.transcript_issues || "—") + "</dd>" +
-        "<dt>Latest Call SID</dt><dd class=\"cell-mono\">" + escapeHtml(callContext.latest) + "</dd>" +
-        "<dt>Primary Call SID</dt><dd class=\"cell-mono\">" + escapeHtml(callContext.primary) + "</dd>" +
-        "<dt>Related Call SIDs</dt><dd>" + relatedCallSidsHtml(callContext) + "</dd>" +
+        "<dt>Call SID</dt><dd>" + callSidOverviewHtml(callContext) + "</dd>" +
         "<dt>Timestamp</dt><dd>" + formatTime(lead.created_at || lead.timestamp) + "</dd>" +
         "<dt>Company / Agent Label</dt><dd>" + ([lead.company_name, lead.agent_label || lead.industry].filter(Boolean).join(" / ") || "—") + "</dd>" +
         metadataSectionHtml(lead) +
@@ -3045,17 +3612,43 @@
       var timeEl = wrap.querySelector(".custom-audio-time");
       var range = wrap.querySelector(".custom-audio-seek");
       if (!audio || !playBtn || !timeEl || !range) return;
+      var isSeeking = false;
       function fmt(s) {
         if (typeof s !== "number" || !isFinite(s)) return "0:00";
         var m = Math.floor(s / 60);
         var sec = Math.floor(s % 60);
         return m + ":" + (sec < 10 ? "0" : "") + sec;
       }
+      function hasDuration() {
+        return !!(audio.duration && isFinite(audio.duration));
+      }
+      function setDisplayedTime(seconds) {
+        var dur = audio.duration;
+        timeEl.textContent = fmt(seconds || 0) + " / " + (hasDuration() ? fmt(dur) : "0:00");
+      }
+      function syncRangeBounds() {
+        if (!hasDuration()) {
+          range.max = "0";
+          range.value = "0";
+          range.disabled = true;
+          return false;
+        }
+        range.max = String(audio.duration);
+        range.disabled = false;
+        return true;
+      }
       function updateTime() {
         var cur = audio.currentTime;
-        var dur = audio.duration;
-        timeEl.textContent = fmt(cur) + " / " + (dur && isFinite(dur) ? fmt(dur) : "0:00");
-        range.value = dur && isFinite(dur) ? (cur / dur * 100) : 0;
+        setDisplayedTime(cur);
+        if (syncRangeBounds() && !isSeeking) range.value = String(cur || 0);
+      }
+      function seekToRange() {
+        if (!syncRangeBounds()) return;
+        var target = parseFloat(range.value);
+        if (!isFinite(target)) target = 0;
+        target = Math.max(0, Math.min(target, audio.duration));
+        audio.currentTime = target;
+        setDisplayedTime(target);
       }
       playBtn.addEventListener("click", function () {
         if (audio.paused) { audio.play(); playBtn.textContent = "\u23F8"; playBtn.setAttribute("aria-label", "Pause"); }
@@ -3064,8 +3657,28 @@
       audio.addEventListener("timeupdate", updateTime);
       audio.addEventListener("loadedmetadata", updateTime);
       audio.addEventListener("ended", function () { playBtn.textContent = "\u25B6"; playBtn.setAttribute("aria-label", "Play"); updateTime(); });
+      range.addEventListener("pointerdown", function () { isSeeking = true; });
       range.addEventListener("input", function () {
-        if (audio.duration && isFinite(audio.duration)) audio.currentTime = (parseFloat(range.value, 10) / 100) * audio.duration;
+        isSeeking = true;
+        seekToRange();
+      });
+      range.addEventListener("change", function () {
+        seekToRange();
+        isSeeking = false;
+        updateTime();
+      });
+      range.addEventListener("pointerup", function () {
+        seekToRange();
+        isSeeking = false;
+        updateTime();
+      });
+      range.addEventListener("pointercancel", function () {
+        isSeeking = false;
+        updateTime();
+      });
+      range.addEventListener("blur", function () {
+        isSeeking = false;
+        updateTime();
       });
       updateTime();
     }
@@ -3174,7 +3787,7 @@
     function renderTableBody(previousLeadIds) {
       const tbody = document.getElementById("tbody");
       if (state.leads.length === 0) {
-        tbody.innerHTML = "<tr><td colspan=\"11\" class=\"empty\">No call records match the filters.</td></tr>";
+        tbody.innerHTML = "<tr><td colspan=\"12\" class=\"empty\">No call records match the filters.</td></tr>";
       } else {
         tbody.innerHTML = state.leads.map(function (r, i) { return renderLead(r, i); }).join("");
         if (previousLeadIds && previousLeadIds.length >= 0) {
@@ -3205,17 +3818,17 @@
           }
           const t = await res.text();
           setStatus("Error " + res.status + ": " + t.slice(0, 80), true);
-          tbody.innerHTML = "<tr><td colspan=\"11\" class=\"empty\">" + (t || res.status) + "</td></tr>";
+          tbody.innerHTML = "<tr><td colspan=\"12\" class=\"empty\">" + (t || res.status) + "</td></tr>";
           return;
         }
         const data = await res.json();
         state.leads = data.call_records || [];
         state.total = typeof data.total === "number" ? data.total : state.leads.length;
-        setStatus(state.total + " call record(s)" + (state.priority || state.date_from || state.date_to || state.has_booking || state.has_address || state.is_spam || state.status || state.address ? " (filtered)" : ""), false, true);
+        setStatus(state.total + " call record(s)" + (hasActiveRecordFilters() ? " (filtered)" : ""), false, true);
         renderTableBody();
       } catch (e) {
         setStatus("Request failed: " + e.message, true);
-        tbody.innerHTML = "<tr><td colspan=\"11\" class=\"empty\">" + e.message + "</td></tr>";
+        tbody.innerHTML = "<tr><td colspan=\"12\" class=\"empty\">" + e.message + "</td></tr>";
       } finally {
         loadInProgress = false;
       }
@@ -3237,7 +3850,7 @@
         if (snapOld === snapNew) return;
         state.leads = newCallRecords;
         state.total = newTotal;
-        setStatus(state.total + " call record(s)" + (state.priority || state.date_from || state.date_to || state.has_booking || state.has_address || state.is_spam || state.status || state.address ? " (filtered)" : ""), false, true);
+        setStatus(state.total + " call record(s)" + (hasActiveRecordFilters() ? " (filtered)" : ""), false, true);
         renderTableBody(prevIds);
       } catch (_) { }
     }
@@ -3308,6 +3921,7 @@
       state.has_address = document.getElementById("filter-has-address").checked;
       state.is_spam = document.getElementById("filter-is-spam").checked;
       state.status = document.getElementById("filter-status").value.trim();
+      state.call_direction = document.getElementById("filter-call-direction").value.trim();
       state.address = document.getElementById("filter-address").value.trim();
       state.page = 1;
       loadCallRecords();
@@ -3415,7 +4029,7 @@
       if (semanticBlock) semanticBlock.classList.toggle("hidden", isServerVad);
     }
     function populateSettingsForm(data) {
-      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE", "VAD_EAGERNESS"];
+      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE", "VAD_EAGERNESS"];
       keys.forEach(function (key) {
         var el = document.getElementById("setting-" + key) || document.querySelector("[name=\"" + key + "\"]");
         if (!el) return;
@@ -3426,7 +4040,7 @@
       updateVadFieldsVisibility();
     }
     function collectSettingsForm() {
-      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE"];
+      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE"];
       var vadModeEl = document.getElementById("setting-VAD_MODE");
       var isServerVad = vadModeEl && (vadModeEl.value || "").toLowerCase() === "server_vad";
       if (isServerVad) keys.push("VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS");
@@ -3487,6 +4101,13 @@
           return res.json();
         })
         .then(function () {
+          if (payload.TIMEZONE) {
+            window.DASHBOARD_TIMEZONE = payload.TIMEZONE;
+            var footerEl = document.getElementById("footer-timezone");
+            if (footerEl) footerEl.textContent = payload.TIMEZONE;
+            var filterTzEl = document.getElementById("filter-tz-label");
+            if (filterTzEl) filterTzEl.textContent = payload.TIMEZONE;
+          }
           statusEl.textContent = "Saved. Changes apply to new calls.";
           statusEl.className = "status success";
         })
@@ -3501,22 +4122,35 @@
     // =========================================================================
     (function () {
       var obModal = document.getElementById("outbound-modal");
+      var obModalTitle = document.getElementById("outbound-modal-title");
       var obListView = document.getElementById("ob-list-view");
       var obEditorView = document.getElementById("ob-editor-view");
+      var obEditorHeader = document.getElementById("ob-editor-header");
+      var obEditorTitle = document.getElementById("ob-editor-title");
+      var obEditorStatus = document.getElementById("ob-editor-status");
+      var obEditorSubtitle = document.getElementById("ob-editor-subtitle");
+      var obConfirmOverlay = document.getElementById("ob-confirm-overlay");
+      var obConfirmMessage = document.getElementById("ob-confirm-message");
+      var obConfirmOkBtn = document.getElementById("ob-confirm-ok");
+      var obConfirmCancelBtn = document.getElementById("ob-confirm-cancel");
       var obListEl = document.getElementById("ob-campaign-list");
       var obListStatus = document.getElementById("ob-list-status");
       var obFooterStatus = document.getElementById("ob-footer-status");
       var obSaveBtn = document.getElementById("ob-save-btn");
       var obStartBtn = document.getElementById("ob-start-btn");
       var obPauseBtn = document.getElementById("ob-pause-btn");
+      var obDeleteBtn = document.getElementById("ob-delete-btn");
       var obProgress = document.getElementById("ob-progress");
       var obProgressFill = document.getElementById("ob-progress-fill");
       var obProgressText = document.getElementById("ob-progress-text");
       var obTypeSelect = document.getElementById("ob-type");
+      var obScriptHint = document.getElementById("ob-script-hint");
+      var obResetScriptBtn = document.getElementById("ob-reset-script-btn");
       var obTbody = document.getElementById("ob-contacts-tbody");
       var obContactsCount = document.getElementById("ob-contacts-count");
       var campaignTypes = {};
       var currentCampaignId = null;
+      var currentCampaign = null;
       var obPollTimer = null;
 
       function obHeaders(json) {
@@ -3531,10 +4165,130 @@
         return u;
       }
 
+      function obConfirm(message, okLabel) {
+        return new Promise(function (resolve) {
+          obConfirmMessage.textContent = message;
+          obConfirmOkBtn.textContent = okLabel || "Delete";
+          obConfirmOverlay.classList.add("open");
+
+          function cleanup(result) {
+            obConfirmOverlay.classList.remove("open");
+            obConfirmOkBtn.removeEventListener("click", onOk);
+            obConfirmCancelBtn.removeEventListener("click", onCancel);
+            obConfirmOverlay.removeEventListener("click", onBackdrop);
+            document.removeEventListener("keydown", onKeydown);
+            resolve(result);
+          }
+
+          function onOk() { cleanup(true); }
+          function onCancel() { cleanup(false); }
+          function onBackdrop(e) {
+            if (e.target === obConfirmOverlay) cleanup(false);
+          }
+          function onKeydown(e) {
+            if (e.key === "Escape") cleanup(false);
+          }
+
+          obConfirmOkBtn.addEventListener("click", onOk);
+          obConfirmCancelBtn.addEventListener("click", onCancel);
+          obConfirmOverlay.addEventListener("click", onBackdrop);
+          document.addEventListener("keydown", onKeydown);
+          obConfirmCancelBtn.focus();
+        });
+      }
+
+      function formatCampaignProgress(progress) {
+        if (!progress || !progress.total) return "0 contacts";
+        var total = progress.total;
+        var completed = progress.completed || 0;
+        var failed = progress.failed || 0;
+        var pending = progress.pending || 0;
+        var calling = progress.calling || 0;
+        var skipped = progress.skipped || 0;
+        var parts = [total + " contact" + (total !== 1 ? "s" : "")];
+        if (completed) parts.push(completed + " completed");
+        if (calling) parts.push(calling + " calling");
+        if (failed) parts.push(failed + " failed");
+        if (pending && !calling) parts.push(pending + " pending");
+        if (skipped) parts.push(skipped + " skipped");
+        return parts.join(" · ");
+      }
+
+      function campaignProgressFromContacts(campaign) {
+        if (!campaign) return { total: 0 };
+        if (campaign.progress) return campaign.progress;
+        var contacts = campaign.contacts || [];
+        var counts = { total: contacts.length };
+        contacts.forEach(function (c) {
+          var status = c.status || "pending";
+          counts[status] = (counts[status] || 0) + 1;
+        });
+        return counts;
+      }
+
+      function updateEditorHeader(campaign) {
+        if (!campaign) {
+          obEditorHeader.style.display = "none";
+          obModalTitle.textContent = "New Campaign";
+          return;
+        }
+        var typeCfg = campaignTypes[campaign.campaign_type] || {};
+        var typeLabel = typeCfg.label || campaign.campaign_type || "general";
+        var status = campaign.status || "draft";
+        var subtitleParts = [typeLabel];
+        var created = formatCampaignDate(campaign.created_at);
+        if (created) subtitleParts.push("Created " + created);
+        subtitleParts.push(formatCampaignProgress(campaignProgressFromContacts(campaign)));
+
+        obEditorHeader.style.display = "";
+        obEditorTitle.textContent = campaign.name || "Untitled campaign";
+        obEditorStatus.textContent = status;
+        obEditorStatus.className = "ob-badge " + status;
+        obEditorSubtitle.textContent = subtitleParts.join(" · ");
+        obModalTitle.textContent = campaign.name || "Campaign";
+      }
+
       window.closeOutboundModal = function () {
         obModal.classList.remove("open");
         if (obPollTimer) { clearInterval(obPollTimer); obPollTimer = null; }
       };
+
+      function getTypeDefaultScript(typeKey) {
+        var cfg = campaignTypes[typeKey] || {};
+        return String(cfg.default_script || "").trim();
+      }
+
+      function applyMessageScriptForCampaign(campaign, options) {
+        options = options || {};
+        var messageEl = document.getElementById("ob-message");
+        var typeKey = campaign ? (campaign.campaign_type || obTypeSelect.value || "general") : (obTypeSelect.value || "general");
+        var saved = campaign ? String(campaign.message_template || "").trim() : "";
+        var forceDefault = !!options.forceDefault;
+
+        if (!forceDefault && saved) {
+          messageEl.value = saved;
+          obScriptHint.textContent = "Custom script saved for this campaign.";
+          return;
+        }
+
+        var defaultScript = getTypeDefaultScript(typeKey);
+        messageEl.value = defaultScript;
+        if (defaultScript) {
+          obScriptHint.textContent = forceDefault
+            ? "Reloaded the built-in default for this campaign type."
+            : (campaign
+              ? "No custom script saved — showing the built-in default for this type. Save to override, or clear and save to keep using the runtime default."
+              : "Prefilled from the campaign type default. Review and edit before saving.");
+        } else {
+          obScriptHint.textContent = "No default script for this type. Add instructions the agent should follow on outbound calls.";
+        }
+      }
+
+      function canReplaceMessageScript() {
+        if (!currentCampaignId) return true;
+        if (!currentCampaign || currentCampaign.status !== "draft") return false;
+        return !String((currentCampaign.message_template || "")).trim();
+      }
 
       function openOutboundModal() {
         obModal.classList.add("open");
@@ -3544,10 +4298,14 @@
       function showListView() {
         obListView.style.display = "";
         obEditorView.style.display = "none";
+        obEditorHeader.style.display = "none";
+        obModalTitle.textContent = "Outbound Campaigns";
         obSaveBtn.style.display = "none";
         obStartBtn.style.display = "none";
         obPauseBtn.style.display = "none";
+        obDeleteBtn.style.display = "none";
         currentCampaignId = null;
+        currentCampaign = null;
         if (obPollTimer) { clearInterval(obPollTimer); obPollTimer = null; }
         loadCampaigns();
       }
@@ -3557,6 +4315,7 @@
         obEditorView.style.display = "flex";
         obFooterStatus.textContent = "";
         currentCampaignId = campaign ? campaign.id : null;
+        currentCampaign = campaign || null;
         document.getElementById("ob-name").value = campaign ? (campaign.name || "") : "";
         document.getElementById("ob-concurrency").value = campaign ? (campaign.concurrency || 1) : 1;
         obTbody.innerHTML = "";
@@ -3565,13 +4324,11 @@
 
         if (campaign) {
           obTypeSelect.value = campaign.campaign_type || "general";
-          document.getElementById("ob-message").value = campaign.message_template || "";
         } else {
           var firstKey = obTypeSelect.options.length ? obTypeSelect.options[0].value : "general";
           obTypeSelect.value = firstKey;
-          var typeCfg = campaignTypes[firstKey] || {};
-          document.getElementById("ob-message").value = typeCfg.default_script || "";
         }
+        applyMessageScriptForCampaign(campaign);
 
         var isRunning = campaign && campaign.status === "running";
         var isPaused = campaign && campaign.status === "paused";
@@ -3581,6 +4338,9 @@
         obSaveBtn.style.display = isDraft ? "" : "none";
         obStartBtn.style.display = (isDraft || isPaused || isCompleted) ? "" : "none";
         obPauseBtn.style.display = isRunning ? "" : "none";
+        obDeleteBtn.style.display = (campaign && !isRunning) ? "" : "none";
+
+        updateEditorHeader(campaign);
 
         if (campaign && campaign.contacts && campaign.contacts.length) {
           campaign.contacts.forEach(function (c) {
@@ -3595,10 +4355,15 @@
       }
 
       function addContactRow(name, phone, email, extra, status, contactId) {
+        var custom = parseCustomFields(extra);
+        var leadOffer = takeCustomField(custom, ["lead_offer", "contact_latest_optin", "latest_optin", "latest opt-in", "Latest Opt-In", "offer", "facebook_offer", "fb_offer", "requested_offer"]);
+        var contactTimezone = takeCustomField(custom, ["contact_timezone", "timezone", "time_zone", "tz"]);
+        var callbackNumber = takeCustomField(custom, ["callback_number", "clinic_phone", "front_desk_phone", "frontdesk_phone", "office_phone", "business_phone"]);
+        var remainingExtra = Object.keys(custom).length ? JSON.stringify(custom) : "";
         var tr = document.createElement("tr");
         if (contactId) tr.dataset.contactId = contactId;
         if (status === "calling") tr.classList.add("ob-row-calling");
-        var statusBadge = status && status !== "pending" ? ' <span class="ob-badge ' + status + '">' + status + '</span>' : "";
+        var statusBadge = status ? '<span class="ob-badge ' + status + '">' + status + '</span>' : "";
         // Call: disabled when already "calling". Stop: end active call. Reset: set to pending when stuck/failed
         var isCallable = !!contactId && status !== "calling";
         var callBtnHtml = contactId
@@ -3614,7 +4379,11 @@
           '<td><input type="text" class="ob-c-name" value="' + esc(name) + '" placeholder="Name" /></td>' +
           '<td><input type="text" class="ob-c-phone" value="' + esc(phone) + '" placeholder="+1…" /></td>' +
           '<td><input type="text" class="ob-c-email" value="' + esc(email) + '" placeholder="Email" /></td>' +
-          '<td><input type="text" class="ob-c-extra" value="' + esc(extra === "{}" ? "" : extra) + '" placeholder="custom JSON" />' + statusBadge + '</td>' +
+          '<td><input type="text" class="ob-c-offer" value="' + esc(leadOffer) + '" placeholder="Botox Wrinkle Reset" /></td>' +
+          '<td><input type="text" class="ob-c-timezone" value="' + esc(contactTimezone) + '" placeholder="America/Los_Angeles" /></td>' +
+          '<td><input type="text" class="ob-c-callback" value="' + esc(callbackNumber) + '" placeholder="(832) 230-2418" /></td>' +
+          '<td><input type="text" class="ob-c-extra" value="' + esc(remainingExtra) + '" placeholder=\'{"source":"FB Lead Form"}\' /></td>' +
+          '<td>' + statusBadge + '</td>' +
           '<td>' + callBtnHtml + stopBtnHtml + resetBtnHtml + '</td>' +
           '<td><button type="button" class="ob-del-btn" title="Remove">&times;</button></td>';
         tr.querySelector(".ob-del-btn").addEventListener("click", function () { tr.remove(); updateContactsCount(); });
@@ -3645,7 +4414,7 @@
           .then(function () {
             obFooterStatus.textContent = "Call ended. Refreshing…";
             startProgressPolling();
-            setTimeout(function () { loadCampaignEditor(currentCampaignId); }, 1500);
+            setTimeout(function () { loadAndEditCampaign(currentCampaignId); }, 1500);
           })
           .catch(function (err) {
             btn.disabled = false;
@@ -3664,7 +4433,7 @@
           .then(function (r) { if (!r.ok) return r.json().then(function (o) { throw new Error(o.detail || r.statusText); }); return r.json(); })
           .then(function () {
             obFooterStatus.textContent = "Contact reset to pending. You can call again.";
-            loadCampaignEditor(currentCampaignId);
+            loadAndEditCampaign(currentCampaignId);
           })
           .catch(function (err) {
             btn.disabled = false;
@@ -3699,6 +4468,31 @@
       }
 
       function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+      function normalizeCustomKey(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+      function parseCustomFields(raw) {
+        if (!raw) return {};
+        if (typeof raw === "object" && !Array.isArray(raw)) return Object.assign({}, raw);
+        try {
+          var parsed = JSON.parse(String(raw));
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+        } catch (_) {
+          return {};
+        }
+      }
+      function takeCustomField(custom, aliases) {
+        if (!custom) return "";
+        var wanted = aliases.map(normalizeCustomKey);
+        var keys = Object.keys(custom);
+        for (var i = 0; i < keys.length; i++) {
+          var key = keys[i];
+          if (wanted.indexOf(normalizeCustomKey(key)) >= 0) {
+            var value = custom[key];
+            delete custom[key];
+            return value == null ? "" : String(value).trim();
+          }
+        }
+        return "";
+      }
 
       function collectContactsFromTable() {
         var rows = obTbody.querySelectorAll("tr");
@@ -3707,8 +4501,13 @@
           var phone = (tr.querySelector(".ob-c-phone") || {}).value || "";
           if (!phone.trim()) return;
           var extraRaw = (tr.querySelector(".ob-c-extra") || {}).value || "";
-          var custom = {};
-          if (extraRaw.trim()) { try { custom = JSON.parse(extraRaw); } catch (_) { custom = {}; } }
+          var custom = parseCustomFields(extraRaw);
+          var leadOffer = ((tr.querySelector(".ob-c-offer") || {}).value || "").trim();
+          var contactTimezone = ((tr.querySelector(".ob-c-timezone") || {}).value || "").trim();
+          var callbackNumber = ((tr.querySelector(".ob-c-callback") || {}).value || "").trim();
+          if (leadOffer) custom.lead_offer = leadOffer;
+          if (contactTimezone) custom.contact_timezone = contactTimezone;
+          if (callbackNumber) custom.callback_number = callbackNumber;
           contacts.push({
             name: ((tr.querySelector(".ob-c-name") || {}).value || "").trim(),
             phone: phone.trim(),
@@ -3739,6 +4538,15 @@
           });
       }
 
+      function formatCampaignDate(iso) {
+        if (!iso) return "";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "";
+        return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+      }
+
+      var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
       // Load campaigns list
       function loadCampaigns() {
         obListStatus.textContent = "Loading…";
@@ -3751,16 +4559,68 @@
           })
           .then(function (data) {
             if (!data) return;
-            obListStatus.textContent = data.total ? data.total + " campaign" + (data.total !== 1 ? "s" : "") : "No campaigns yet.";
-            (data.campaigns || []).forEach(function (c) {
+            var campaigns = data.campaigns || [];
+            obListStatus.textContent = data.total ? data.total + " campaign" + (data.total !== 1 ? "s" : "") : "";
+            if (!campaigns.length) {
+              obListStatus.textContent = "";
+              var empty = document.createElement("li");
+              empty.className = "ob-empty";
+              empty.innerHTML = "<strong>No campaigns yet</strong><span>Create your first outbound campaign to start calling leads.</span>";
+              obListEl.appendChild(empty);
+              return;
+            }
+            campaigns.forEach(function (c) {
               var li = document.createElement("li");
               li.dataset.id = c.id;
-              li.innerHTML = '<span class="ob-c-name">' + esc(c.name) + '</span><span class="ob-c-type">' + esc(c.campaign_type) + '</span><span class="ob-badge ' + c.status + '">' + c.status + '</span>';
+              var typeCfg = campaignTypes[c.campaign_type] || {};
+              var typeLabel = typeCfg.label || c.campaign_type || "general";
+              var metaParts = [typeLabel];
+              var created = formatCampaignDate(c.created_at);
+              if (created) metaParts.push("Created " + created);
+              var statsLine = formatCampaignProgress(c.progress || { total: 0 });
+              li.innerHTML =
+                '<div class="ob-c-main"><span class="ob-c-name">' + esc(c.name) + '</span>' +
+                '<span class="ob-c-meta">' + esc(metaParts.join(" · ")) + '</span>' +
+                '<span class="ob-c-stats">' + esc(statsLine) + '</span></div>' +
+                '<span class="ob-badge ' + esc(c.status) + '">' + esc(c.status) + '</span>' +
+                '<button type="button" class="ob-c-del" title="Delete campaign" aria-label="Delete campaign">' + TRASH_SVG + '</button>';
               li.addEventListener("click", function () { loadAndEditCampaign(c.id); });
+              li.querySelector(".ob-c-del").addEventListener("click", function (e) {
+                e.stopPropagation();
+                deleteCampaign(c.id, c.name, li);
+              });
               obListEl.appendChild(li);
             });
           })
           .catch(function (err) { obListStatus.textContent = "Error: " + err.message; });
+      }
+
+      // Delete a campaign (and all its contacts) after confirmation
+      function deleteCampaign(id, name, listItem) {
+        if (!id) return;
+        var label = name ? '"' + name + '"' : "this campaign";
+        obConfirm(
+          "Delete " + label + "? This removes the campaign and all its contacts. This cannot be undone.",
+          "Delete"
+        ).then(function (confirmed) {
+          if (!confirmed) return;
+          if (listItem) listItem.style.opacity = "0.5";
+          fetch(obUrl("/outbound/campaigns/" + id), { method: "DELETE", headers: obHeaders(false), credentials: "include" })
+            .then(function (r) { if (!r.ok) return r.json().then(function (o) { throw new Error(o.detail || r.statusText); }); return r.json(); })
+            .then(function () {
+              if (currentCampaignId === id) {
+                showListView();
+              } else {
+                loadCampaigns();
+              }
+              obListStatus.textContent = "Campaign deleted.";
+            })
+            .catch(function (err) {
+              if (listItem) listItem.style.opacity = "";
+              obListStatus.textContent = "Delete failed: " + err.message;
+              obFooterStatus.textContent = "Delete failed: " + err.message;
+            });
+        });
       }
 
       function loadAndEditCampaign(id) {
@@ -3843,8 +4703,15 @@
             obProgressFill.style.width = pct + "%";
             obProgressText.textContent = completed + "/" + total + " done" + (calling ? " (" + calling + " calling)" : "") + (p.failed ? " — " + p.failed + " failed" : "");
             obProgress.style.display = "";
+            if (currentCampaign) {
+              currentCampaign.status = data.campaign_status || currentCampaign.status;
+              currentCampaign.progress = p;
+              updateEditorHeader(currentCampaign);
+              var isRunning = currentCampaign.status === "running";
+              obDeleteBtn.style.display = isRunning ? "none" : "";
+            }
             if (obLastCallingCount > 0 && calling === 0) {
-              loadCampaignEditor(currentCampaignId);
+              loadAndEditCampaign(currentCampaignId);
             }
             obLastCallingCount = calling;
             if (data.campaign_status === "completed" || data.campaign_status === "paused") {
@@ -3884,11 +4751,18 @@
         e.target.value = "";
       }
 
-      // Type change: prefill script (always updates for new campaigns; clears if type has no script)
+      // Type change: prefill script when creating a campaign or when draft has no saved script
       obTypeSelect.addEventListener("change", function () {
-        if (currentCampaignId) return;
-        var cfg = campaignTypes[obTypeSelect.value] || {};
-        document.getElementById("ob-message").value = cfg.default_script || "";
+        if (!canReplaceMessageScript()) return;
+        var draftCampaign = currentCampaign ? Object.assign({}, currentCampaign, { campaign_type: obTypeSelect.value, message_template: "" }) : null;
+        applyMessageScriptForCampaign(draftCampaign);
+      });
+
+      obResetScriptBtn.addEventListener("click", function () {
+        var draftCampaign = currentCampaign
+          ? Object.assign({}, currentCampaign, { campaign_type: obTypeSelect.value, message_template: "" })
+          : null;
+        applyMessageScriptForCampaign(draftCampaign, { forceDefault: true });
       });
 
       // Wire up events
@@ -3903,6 +4777,10 @@
       obSaveBtn.addEventListener("click", saveDraft);
       obStartBtn.addEventListener("click", startCampaign);
       obPauseBtn.addEventListener("click", pauseCampaign);
+      obDeleteBtn.addEventListener("click", function () {
+        if (!currentCampaignId) return;
+        deleteCampaign(currentCampaignId, document.getElementById("ob-name").value.trim(), null);
+      });
     })();
 
     // =========================================================================

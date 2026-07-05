@@ -6,11 +6,12 @@ Mirrors the patterns in webhook_service.py — sync Supabase functions
 called via asyncio.to_thread() from async route handlers.
 """
 import os
+import json
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
-from config import Config, _build_accent_instruction, _build_language_instruction
+from config import Config, _build_accent_instruction, _build_delivery_instruction, _build_language_instruction
 from services.log_utils import Log
 
 from services.outbound_campaign_types import DEFAULT_CAMPAIGN_TYPES
@@ -36,9 +37,44 @@ def get_campaign_type_config(campaign_type: str) -> dict[str, Any]:
     return get_campaign_types().get(campaign_type, {})
 
 
+def resolve_campaign_type_default_script(campaign_type: str) -> str:
+    """Return the script the dashboard should prefill for a campaign type.
+
+    Mirrors the runtime fallback used when message_template is blank:
+    inline default_script, then system_instructions_path, then Config.SYSTEM_MESSAGE.
+    """
+    type_cfg = get_campaign_type_config(campaign_type)
+    template = (type_cfg.get("default_script") or "").strip()
+    if not template and (type_cfg.get("system_instructions_path") or "").strip():
+        template = _render_campaign_system_instructions(type_cfg["system_instructions_path"]).strip()
+    if not template:
+        template = (getattr(Config, "SYSTEM_MESSAGE", "") or "").strip()
+    return template
+
+
+def get_campaign_types_for_dashboard() -> dict[str, Any]:
+    """Campaign type presets with resolved default_script text for dashboard prefill."""
+    types = get_campaign_types()
+    enriched: dict[str, Any] = {}
+    for key, cfg in types.items():
+        item = dict(cfg)
+        item["default_script"] = resolve_campaign_type_default_script(key)
+        enriched[key] = item
+    return enriched
+
+
 def _append_language_and_accent_policy(prompt: str) -> str:
-    """Append global Realtime language/accent policy to outbound prompts."""
+    """Append global Realtime delivery/language/accent policy to outbound prompts."""
     sections = [prompt.rstrip()]
+    if "# Delivery Style" not in prompt:
+        sections.append(
+            _build_delivery_instruction(
+                getattr(Config, "ASSISTANT_TONE", "warm professional"),
+                getattr(Config, "ASSISTANT_WARMTH", "warm"),
+                getattr(Config, "ASSISTANT_EXPRESSIVENESS", "balanced"),
+                getattr(Config, "ASSISTANT_PACING", "moderate"),
+            ).strip()
+        )
     if "# Language" not in prompt:
         sections.append(
             _build_language_instruction(
@@ -55,6 +91,410 @@ def _append_language_and_accent_policy(prompt: str) -> str:
             ).strip()
         )
     return "\n\n".join(section for section in sections if section)
+
+
+def _clean_prompt_value(value: Any, *, max_length: int = 500) -> str:
+    """Return a compact one-line value suitable for prompt context."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        text = "true" if value else "false"
+    elif isinstance(value, (str, int, float)):
+        text = str(value)
+    else:
+        return ""
+    text = " ".join(text.split()).strip()
+    if len(text) > max_length:
+        return text[: max_length - 3].rstrip() + "..."
+    return text
+
+
+def _normalized_field_key(value: Any) -> str:
+    """Normalize custom-field keys from CSVs/forms for alias matching."""
+    return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+
+
+def _first_custom_field(custom_fields: dict[str, Any], aliases: tuple[str, ...]) -> str:
+    alias_keys = {_normalized_field_key(alias) for alias in aliases}
+    for key, value in custom_fields.items():
+        if _normalized_field_key(key) in alias_keys:
+            cleaned = _clean_prompt_value(value)
+            if cleaned:
+                return cleaned
+    return ""
+
+
+def get_contact_timezone_from_contact(contact: dict[str, Any] | None) -> str:
+    """Return lead-provided contact timezone without falling back to business timezone."""
+    if not isinstance(contact, dict):
+        return ""
+    top_level = _first_custom_field(contact, ("contact_timezone", "timezone", "time_zone", "tz"))
+    if top_level:
+        return top_level
+    custom_fields = contact.get("custom_fields") or {}
+    if not isinstance(custom_fields, dict):
+        custom_fields = {}
+    return _first_custom_field(custom_fields, ("contact_timezone", "timezone", "time_zone", "tz"))
+
+
+def _split_contact_name(name: str) -> tuple[str, str]:
+    parts = [part for part in (name or "").split() if part]
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+_LEAD_NAME_ALIASES = ("name", "contact_name", "full_name", "fullname", "lead_name")
+_LEAD_FIRST_NAME_ALIASES = ("first_name", "firstname", "contact_first_name", "first")
+_LEAD_LAST_NAME_ALIASES = ("last_name", "lastname", "contact_last_name", "last")
+_LEAD_PHONE_ALIASES = (
+    "phone",
+    "contact_phone",
+    "phone_number",
+    "phonenumber",
+    "mobile",
+    "mobile_phone",
+    "cell",
+    "user_number",
+)
+_LEAD_EMAIL_ALIASES = ("email", "contact_email", "email_address", "emailaddress")
+_LEAD_OFFER_ALIASES = (
+    "lead_offer",
+    "latest_optin",
+    "latest_opt_in",
+    "contact_latest_optin",
+    "contact_latest_opt_in",
+    "offer",
+    "optin",
+    "opt_in",
+    "facebook_offer",
+    "fb_offer",
+    "requested_offer",
+    "latest offer",
+    "latest opt-in",
+)
+_LEAD_TIMEZONE_ALIASES = ("contact_timezone", "timezone", "time_zone", "tz")
+_LEAD_CALLBACK_ALIASES = (
+    "callback_number",
+    "clinic_phone",
+    "front_desk_phone",
+    "frontdesk_phone",
+    "office_phone",
+    "business_phone",
+)
+_LEAD_SOURCE_ALIASES = ("source_campaign", "campaign", "campaign_name", "source")
+_LEAD_ENTITY_CONTAINER_ALIASES = ("contact", "lead", "data", "payload")
+_LEAD_CUSTOM_FIELD_CONTAINER_ALIASES = (
+    "custom_fields",
+    "customfields",
+    "custom_data",
+    "customdata",
+    "custom",
+    "fields",
+    "extra",
+)
+_LEAD_AUTH_FIELD_ALIASES = ("key", "dashboard_key", "dashboardkey", "x_dashboard_key", "authorization")
+
+
+def _coerce_mapping(value: Any) -> dict[str, Any]:
+    """Return a plain dict from a JSON object or JSON-object string."""
+    if isinstance(value, dict):
+        return {str(k).strip(): v for k, v in value.items() if str(k).strip()}
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return {}
+            if isinstance(parsed, dict):
+                return {str(k).strip(): v for k, v in parsed.items() if str(k).strip()}
+    return {}
+
+
+def _lead_payload_entity_sources(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return top-level and common nested lead/contact objects from an API payload."""
+    root = _coerce_mapping(payload)
+    if not root:
+        return []
+
+    entity_keys = {_normalized_field_key(alias) for alias in _LEAD_ENTITY_CONTAINER_ALIASES}
+    sources = [root]
+    for source in list(sources):
+        for key, value in source.items():
+            if _normalized_field_key(key) in entity_keys:
+                nested = _coerce_mapping(value)
+                if nested:
+                    sources.append(nested)
+    return sources
+
+
+def _lead_payload_sources(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return entity sources plus explicit custom-field maps for alias matching."""
+    entity_sources = _lead_payload_entity_sources(payload)
+    custom_container_keys = {
+        _normalized_field_key(alias) for alias in _LEAD_CUSTOM_FIELD_CONTAINER_ALIASES
+    }
+    sources = list(entity_sources)
+    for source in entity_sources:
+        for key, value in source.items():
+            if _normalized_field_key(key) in custom_container_keys:
+                custom = _coerce_mapping(value)
+                if custom:
+                    sources.append(custom)
+    return sources
+
+
+def _first_lead_payload_field(payload: dict[str, Any], aliases: tuple[str, ...]) -> str:
+    """Find the first non-empty lead field across top-level, nested, and custom maps."""
+    alias_keys = {_normalized_field_key(alias) for alias in aliases}
+    for source in _lead_payload_sources(payload):
+        for key, value in source.items():
+            if _normalized_field_key(key) in alias_keys:
+                cleaned = _clean_prompt_value(value)
+                if cleaned:
+                    return cleaned
+    return ""
+
+
+def build_contact_from_lead_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize one external lead webhook payload into an outbound contact row.
+
+    This accepts direct JSON from tools such as GHL, n8n, Zapier, or Insomnia.
+    Common aliases are converted into the starter's canonical contact fields and
+    appointment-setter custom fields.
+    """
+    if not isinstance(payload, dict):
+        return {"name": "", "phone": "", "email": "", "custom_fields": {}}
+
+    name = _first_lead_payload_field(payload, _LEAD_NAME_ALIASES)
+    first_name = _first_lead_payload_field(payload, _LEAD_FIRST_NAME_ALIASES)
+    last_name = _first_lead_payload_field(payload, _LEAD_LAST_NAME_ALIASES)
+    if not name:
+        name = " ".join(part for part in (first_name, last_name) if part).strip()
+    if name and (not first_name or not last_name):
+        split_first, split_last = _split_contact_name(name)
+        first_name = first_name or split_first
+        last_name = last_name or split_last
+
+    phone = _first_lead_payload_field(payload, _LEAD_PHONE_ALIASES)
+    email = _first_lead_payload_field(payload, _LEAD_EMAIL_ALIASES)
+    lead_offer = _first_lead_payload_field(payload, _LEAD_OFFER_ALIASES)
+    contact_timezone = _first_lead_payload_field(payload, _LEAD_TIMEZONE_ALIASES)
+    callback_number = _first_lead_payload_field(payload, _LEAD_CALLBACK_ALIASES)
+    source_campaign = _first_lead_payload_field(payload, _LEAD_SOURCE_ALIASES)
+
+    custom_fields: dict[str, Any] = {}
+    entity_sources = _lead_payload_entity_sources(payload)
+    custom_container_keys = {
+        _normalized_field_key(alias) for alias in _LEAD_CUSTOM_FIELD_CONTAINER_ALIASES
+    }
+    for source in entity_sources:
+        for key, value in source.items():
+            if _normalized_field_key(key) in custom_container_keys:
+                custom_fields.update(_coerce_mapping(value))
+
+    reserved_keys = {
+        _normalized_field_key(alias)
+        for alias in (
+            _LEAD_NAME_ALIASES
+            + _LEAD_FIRST_NAME_ALIASES
+            + _LEAD_LAST_NAME_ALIASES
+            + _LEAD_PHONE_ALIASES
+            + _LEAD_EMAIL_ALIASES
+            + _LEAD_OFFER_ALIASES
+            + _LEAD_TIMEZONE_ALIASES
+            + _LEAD_CALLBACK_ALIASES
+            + _LEAD_SOURCE_ALIASES
+            + _LEAD_ENTITY_CONTAINER_ALIASES
+            + _LEAD_CUSTOM_FIELD_CONTAINER_ALIASES
+            + _LEAD_AUTH_FIELD_ALIASES
+        )
+    }
+    for source in entity_sources:
+        for key, value in source.items():
+            normalized_key = _normalized_field_key(key)
+            if normalized_key in reserved_keys or isinstance(value, (dict, list, tuple, set)):
+                continue
+            if _clean_prompt_value(value):
+                custom_fields.setdefault(str(key).strip(), value)
+
+    if first_name:
+        custom_fields["contact_first_name"] = first_name
+    if last_name:
+        custom_fields["contact_last_name"] = last_name
+    if lead_offer:
+        custom_fields["lead_offer"] = lead_offer
+        custom_fields.setdefault("contact_latest_optin", lead_offer)
+    if contact_timezone:
+        custom_fields["contact_timezone"] = contact_timezone
+    if callback_number:
+        custom_fields["callback_number"] = callback_number
+    if source_campaign:
+        custom_fields["source_campaign"] = source_campaign
+        custom_fields.setdefault("source", source_campaign)
+
+    return {
+        "name": name,
+        "phone": phone,
+        "email": email,
+        "custom_fields": custom_fields,
+    }
+
+
+def _build_outbound_lead_context(
+    *,
+    campaign: dict[str, Any],
+    contact: dict[str, Any],
+    custom_fields: dict[str, Any],
+) -> dict[str, str]:
+    """Normalize outbound lead fields used by reusable prompts and templates."""
+    raw_name = _clean_prompt_value(contact.get("name"))
+    custom_name = _first_custom_field(
+        custom_fields,
+        ("contact_name", "full_name", "name", "lead_name"),
+    )
+    contact_name = raw_name or custom_name
+    first_name = _first_custom_field(
+        custom_fields,
+        ("contact_first_name", "first_name", "firstname", "first"),
+    )
+    last_name = _first_custom_field(
+        custom_fields,
+        ("contact_last_name", "last_name", "lastname", "last"),
+    )
+    if contact_name and (not first_name or not last_name):
+        split_first, split_last = _split_contact_name(contact_name)
+        first_name = first_name or split_first
+        last_name = last_name or split_last
+
+    lead_offer = _first_custom_field(
+        custom_fields,
+        (
+            "lead_offer",
+            "latest_optin",
+            "latest_opt_in",
+            "contact_latest_optin",
+            "contact_latest_opt_in",
+            "offer",
+            "optin",
+            "opt_in",
+            "facebook_offer",
+            "fb_offer",
+            "requested_offer",
+            "latest offer",
+            "latest opt-in",
+        ),
+    )
+    contact_timezone = _first_custom_field(
+        custom_fields,
+        ("contact_timezone", "timezone", "time_zone", "tz"),
+    )
+    callback_number = _first_custom_field(
+        custom_fields,
+        (
+            "callback_number",
+            "clinic_phone",
+            "front_desk_phone",
+            "frontdesk_phone",
+            "office_phone",
+            "business_phone",
+        ),
+    ) or _clean_prompt_value(os.getenv("HUMAN_TRANSFER_DIAL_NUMBER", ""))
+    source_campaign = _first_custom_field(
+        custom_fields,
+        ("source_campaign", "campaign", "campaign_name", "source"),
+    ) or _clean_prompt_value(campaign.get("name"))
+
+    return {
+        "contact_name": contact_name,
+        "contact_first_name": first_name,
+        "contact_last_name": last_name,
+        "contact_phone": _clean_prompt_value(contact.get("phone")),
+        "contact_email": _clean_prompt_value(contact.get("email")),
+        "lead_offer": lead_offer,
+        "contact_latest_optin": lead_offer,
+        "contact_timezone": contact_timezone,
+        "contact_id": _clean_prompt_value(contact.get("id")),
+        "call_id": _clean_prompt_value(contact.get("call_sid")),
+        "callback_number": callback_number,
+        "source_campaign": source_campaign,
+    }
+
+
+def _format_outbound_lead_context(context: dict[str, str]) -> str:
+    """Render normalized lead context as a compact system-prompt block."""
+    ordered_keys = (
+        "contact_name",
+        "contact_first_name",
+        "contact_last_name",
+        "contact_phone",
+        "contact_email",
+        "lead_offer",
+        "contact_timezone",
+        "contact_id",
+        "call_id",
+        "callback_number",
+        "source_campaign",
+    )
+    lines = [
+        "# Outbound Lead Context",
+        "Use this context silently. Do not read field names aloud.",
+    ]
+    for key in ordered_keys:
+        value = context.get(key, "")
+        if value:
+            lines.append(f"- {key}: {value}")
+    return "\n".join(lines)
+
+
+def _render_campaign_system_instructions(instructions_path: str) -> str:
+    """Render a campaign-specific prompt with the same config builders as the main prompt."""
+    from config import (
+        _build_accent_instruction,
+        _build_booking_instruction,
+        _build_call_record_instruction,
+        _build_delivery_instruction,
+        _build_language_instruction,
+        _build_reasoning_effort_instruction,
+        _build_tools_availability_instruction,
+        _build_tools_text,
+        _build_transfer_instruction,
+    )
+    from system_instructions import render_system_instructions
+
+    return render_system_instructions(
+        company_name=Config.COMPANY_NAME,
+        agent_name=Config.AGENT_NAME,
+        delivery_instruction=_build_delivery_instruction(
+            Config.ASSISTANT_TONE,
+            Config.ASSISTANT_WARMTH,
+            Config.ASSISTANT_EXPRESSIVENESS,
+            Config.ASSISTANT_PACING,
+        ),
+        language_instruction=_build_language_instruction(
+            Config.ASSISTANT_LANGUAGE,
+            Config.LANGUAGE_SWITCH_POLICY,
+        ),
+        accent_instruction=_build_accent_instruction(
+            Config.ASSISTANT_LANGUAGE,
+            Config.ASSISTANT_ACCENT,
+            Config.ASSISTANT_ACCENT_STRENGTH,
+        ),
+        call_record_instruction=_build_call_record_instruction(),
+        booking_instruction=_build_booking_instruction(),
+        transfer_instruction=_build_transfer_instruction(),
+        reasoning_effort_instruction=_build_reasoning_effort_instruction(
+            Config.OPENAI_REALTIME_MODEL,
+            Config.REALTIME_REASONING_EFFORT,
+        ),
+        tools_availability_instruction=_build_tools_availability_instruction(),
+        tools_text=_build_tools_text(),
+        instructions_path=instructions_path,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +556,41 @@ def create_campaign_sync(
         return None
 
 
+def _aggregate_contact_progress(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    """Group contact status rows by campaign_id into progress count dicts."""
+    progress_by_campaign: dict[str, dict[str, int]] = {}
+    for row in rows:
+        campaign_id = row.get("campaign_id")
+        if not campaign_id:
+            continue
+        counts = progress_by_campaign.setdefault(str(campaign_id), {})
+        status = row.get("status", "pending")
+        counts[status] = counts.get(status, 0) + 1
+        counts["total"] = counts.get("total", 0) + 1
+    return progress_by_campaign
+
+
+def _fetch_contact_progress_for_campaigns_sync(
+    client: Any,
+    campaign_ids: list[str],
+) -> dict[str, dict[str, int]]:
+    """Return per-campaign contact status counts for the given campaign ids."""
+    if not campaign_ids:
+        return {}
+    try:
+        r = (
+            client.table(_contacts_table())
+            .select("campaign_id, status")
+            .in_("campaign_id", campaign_ids)
+            .execute()
+        )
+        rows = (r.data or []) if hasattr(r, "data") else []
+        return _aggregate_contact_progress(rows)
+    except Exception as e:
+        Log.error(f"Outbound campaign list progress error: {e}")
+        return {}
+
+
 def list_campaigns_sync(
     limit: int = 50,
     offset: int = 0,
@@ -137,6 +612,11 @@ def list_campaigns_sync(
         r = query.execute()
         data = (r.data or []) if hasattr(r, "data") else []
         total = r.count if hasattr(r, "count") and r.count is not None else len(data)
+        campaign_ids = [str(c["id"]) for c in data if c.get("id")]
+        progress_by_id = _fetch_contact_progress_for_campaigns_sync(client, campaign_ids)
+        for campaign in data:
+            campaign_id = str(campaign.get("id") or "")
+            campaign["progress"] = progress_by_id.get(campaign_id, {"total": 0})
         return data, total
     except Exception as e:
         Log.error(f"Outbound campaigns list error: {e}")
@@ -386,9 +866,9 @@ def reset_contact_to_pending_sync(contact_id: str) -> bool:
 
 def build_outbound_system_message(campaign_id: str, contact_id: str) -> str | None:
     """
-    Fetch campaign + contact from Supabase and render the message_template
-    with contact-specific placeholders. Returns the rendered system message,
-    or None if data is missing (caller should fall back to default).
+    Fetch campaign + contact from Supabase and render the system message with
+    normalized lead context. Returns None only when campaign/contact data cannot
+    be loaded.
     """
     client = _get_supabase_client()
     if not client:
@@ -413,26 +893,34 @@ def build_outbound_system_message(campaign_id: str, contact_id: str) -> str | No
 
     template = (campaign.get("message_template") or "").strip()
     if not template:
-        type_cfg = get_campaign_type_config(campaign.get("campaign_type", "general"))
-        template = (type_cfg.get("default_script") or "").strip()
+        template = resolve_campaign_type_default_script(campaign.get("campaign_type", "general"))
     if not template:
         return None
 
     from system_instructions import get_agent_name
     agent_name = get_agent_name() or "the voice agent"
+    custom_fields = contact.get("custom_fields") or {}
+    if not isinstance(custom_fields, dict):
+        custom_fields = {}
+    lead_context = _build_outbound_lead_context(
+        campaign=campaign,
+        contact=contact,
+        custom_fields=custom_fields,
+    )
     replacements = {
-        "contact_name": contact.get("name") or "there",
-        "company_name": os.getenv("COMPANY_NAME", "our company"),
+        "contact_name": lead_context.get("contact_name") or "there",
+        "company_name": os.getenv("COMPANY_NAME") or getattr(Config, "COMPANY_NAME", "our company"),
         "agent_name": agent_name,
         "receptionist_name": agent_name,
     }
-    custom_fields = contact.get("custom_fields") or {}
-    if isinstance(custom_fields, dict):
-        replacements.update(custom_fields)
+    replacements.update(custom_fields)
+    replacements.update({key: value for key, value in lead_context.items() if value})
 
     result = template
     for key, value in replacements.items():
         result = result.replace("{" + key + "}", str(value))
+
+    result = result.rstrip() + "\n\n" + _format_outbound_lead_context(lead_context)
 
     return _append_language_and_accent_policy(result)
 

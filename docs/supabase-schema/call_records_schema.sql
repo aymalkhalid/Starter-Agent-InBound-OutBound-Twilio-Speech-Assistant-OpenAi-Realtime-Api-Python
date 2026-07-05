@@ -50,15 +50,15 @@ CREATE TABLE IF NOT EXISTS public.call_records (
   metadata                  jsonb
 );
 
-COMMENT ON TABLE public.call_records IS 'Call records captured by the generic voice agent; one row per call_sid.';
-COMMENT ON COLUMN public.call_records.call_sid IS 'Twilio call SID; unique per call and used for updates.';
+COMMENT ON TABLE public.call_records IS 'Call records captured by the generic voice agent; one row per customer/business call record. The latest/current Twilio call_sid is stored on the row; primary/related call SIDs can be stored in metadata.';
+COMMENT ON COLUMN public.call_records.call_sid IS 'Latest/current Twilio Call SID used for recording callbacks and update lookups.';
 COMMENT ON COLUMN public.call_records.lead_name IS 'Compatibility column for contact name.';
 COMMENT ON COLUMN public.call_records.lead_email IS 'Compatibility column for contact email.';
 COMMENT ON COLUMN public.call_records.lead_phone IS 'Compatibility column for contact phone.';
 COMMENT ON COLUMN public.call_records.service_address IS 'Compatibility column for location/address when relevant.';
-COMMENT ON COLUMN public.call_records.lead_status IS 'Compatibility column for workflow status: pending, in_progress, booked, completed, finalized, spam.';
+COMMENT ON COLUMN public.call_records.lead_status IS 'Compatibility column for workflow/outcome status such as pending, in_progress, booked, interested-callback, declined, do-not-contact, wrong-person, transfer-needed, booking-error, completed, finalized, spam.';
 COMMENT ON COLUMN public.call_records.confirmed_slot IS 'Booked slot returned by book_appointment.';
-COMMENT ON COLUMN public.call_records.transcript_enhanced_at IS 'Set when transcript is AI-enhanced from the dashboard.';
+COMMENT ON COLUMN public.call_records.transcript_enhanced_at IS 'Set when transcript is AI-enhanced from the dashboard or auto-enhancement path.';
 
 CREATE INDEX IF NOT EXISTS idx_call_records_created_at ON public.call_records (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_call_records_status ON public.call_records (lead_status);

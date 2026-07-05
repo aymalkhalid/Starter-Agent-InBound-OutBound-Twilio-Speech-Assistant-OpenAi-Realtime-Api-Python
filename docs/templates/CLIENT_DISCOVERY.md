@@ -97,10 +97,14 @@ Check what this client needs:
 
 ---
 
-## 6. Voice and language
+## 6. Tone, voice, and language
 
 | Setting | Value |
 | --- | --- |
+| Tone (`ASSISTANT_TONE`) | e.g. `warm professional`, `calm helpful` |
+| Warmth (`ASSISTANT_WARMTH`) | `neutral`, `warm`, `very_warm` |
+| Expressiveness (`ASSISTANT_EXPRESSIVENESS`) | `reserved`, `balanced`, `expressive` |
+| Pacing (`ASSISTANT_PACING`) | `relaxed`, `moderate`, `brisk` |
 | Voice (`VOICE`) | e.g. `cedar`, `marin` |
 | Language (`ASSISTANT_LANGUAGE`) | Default `English` |
 | Accent (`ASSISTANT_ACCENT`) | e.g. `neutral American` |
@@ -134,7 +138,7 @@ After filling sections 1–7, apply changes in this order:
 | 3 Conversation script | 4 | `# Conversation Flow`, `# Tools` |
 | 4 Data to capture | 4 | `# Entity Capture`; tool fields in `save_call_record` |
 | 5 Integrations | 3 | `.env` feature flags (see [Configuration](../CONFIGURATION.md)) |
-| 6 Voice and language | 3, 5 | `.env` voice/accent; optional `WELCOME_MESSAGE` |
+| 6 Tone, voice, and language | 3, 5 | `.env` tone/voice/language/accent; optional `WELCOME_MESSAGE` |
 | 7 Deploy and ops | 7 | Twilio webhook, Cloud Run, ngrok for dev |
 
 **Do not customize in the starter repo** — use a client clone. See [Multi-client workflow](../MULTI_CLIENT_WORKFLOW.md).

@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from config import Config
 from services.log_utils import Log
+from services.timezone_utils import infer_timezone_from_phone, normalize_timezone_name
+
+_TOOL_RESPONSE_CREATE_DELAY_SECONDS = 0.2
 
 try:
     from system_instructions import (
@@ -46,10 +49,28 @@ except ImportError:
         return False
 
 try:
-    from services.call_records_service import has_call_record_backend_configured
+    from services.call_records_service import (
+        APPOINTMENT_SETTER_OUTCOME_TAGS,
+        has_call_record_backend_configured,
+        normalize_call_record_outcome_tag,
+    )
 except ImportError:
+    APPOINTMENT_SETTER_OUTCOME_TAGS = frozenset({
+        "booked",
+        "interested-callback",
+        "declined",
+        "do-not-contact",
+        "wrong-person",
+        "transfer-needed",
+        "booking-error",
+    })
     def has_call_record_backend_configured() -> bool:
         return False
+    def normalize_call_record_outcome_tag(value: Any) -> str | None:
+        text = str(value or "").strip().lower().replace("_", "-")
+        if text in APPOINTMENT_SETTER_OUTCOME_TAGS:
+            return text
+        return None
 
 try:
     from services.tool_registry import external_tool_registry
@@ -69,6 +90,21 @@ def _is_placeholder_phone(s: str) -> bool:
     if any(c.isdigit() for c in t):
         return False
     return "caller" in t and ("number" in t or "phone" in t)
+
+
+def _build_call_record_metadata(connection_manager) -> dict[str, Any]:
+    """Tag call records with inbound/outbound direction for dashboard filtering."""
+    state = connection_manager.state
+    if getattr(state, "is_outbound_call", False):
+        meta: dict[str, Any] = {"call_direction": "outbound"}
+        campaign_id = getattr(state, "outbound_campaign_id", None)
+        contact_id = getattr(state, "outbound_contact_id", None)
+        if campaign_id:
+            meta["outbound_campaign_id"] = str(campaign_id).strip()
+        if contact_id:
+            meta["outbound_contact_id"] = str(contact_id).strip()
+        return meta
+    return {"call_direction": "inbound"}
 
 
 _KNOWN_PROMPT_EXAMPLE_PHONE_DIGITS = {"5555550101"}
@@ -540,7 +576,12 @@ class OpenAISessionManager:
                         "call_summary": {"type": "string", "description": "2-3 sentence summary of the entire call so far; include all main topics and all bookings (e.g. both appointments), not only the latest."},
                         "preferred_callback_time": {"type": "string", "description": "When they prefer to be contacted"},
                         "service_address": {"type": "string", "description": "Address or location if relevant and provided."},
-                        "confirmed_slot": {"type": "object", "description": "If an appointment was booked: {start, end, display}"}
+                        "confirmed_slot": {"type": "object", "description": "If an appointment was booked: {start, end, display}"},
+                        "outcome_tag": {
+                            "type": "string",
+                            "enum": list(sorted(APPOINTMENT_SETTER_OUTCOME_TAGS)),
+                            "description": "Appointment-setter outcome tag: booked, interested-callback, declined, do-not-contact, wrong-person, transfer-needed, or booking-error."
+                        }
                     },
                     "required": ["contact_name", "contact_phone", "issue_summary", "priority", "call_summary"]
                 }
@@ -556,6 +597,7 @@ class OpenAISessionManager:
                     "Returns a full week of options so you can answer 'today', 'tomorrow', or a specific date. "
                     "Use for_date when the caller asks for a specific date (e.g. 'What's available on March 5?'). "
                     "If a specific weekday is disabled by booking settings, treat that day as closed and tell the caller it is closed (not just 'no slots'). "
+                    "Appointment times are in the business/appointment timezone. If caller_timezone is known and differs, the tool returns caller-local display too; offer caller-local time first, then appointment/clinic time. "
                     "After book_appointment, edit_booking, or delete_booking succeeds, call this again if they want more or different times—"
                     "do not reuse an earlier slot list from the conversation; availability may have changed.\n\n"
                     "Preamble sample phrases:\n"
@@ -567,7 +609,8 @@ class OpenAISessionManager:
                     "type": "object",
                     "properties": {
                         "days_ahead": {"type": "integer", "description": "Number of days to look ahead (default 7). Use when showing general week availability."},
-                        "for_date": {"type": "string", "description": "Specific date in YYYY-MM-DD format. Use when caller asks for one day only (e.g. 'March 5' -> 2025-03-05)."}
+                        "for_date": {"type": "string", "description": "Specific date in YYYY-MM-DD format. Use when caller asks for one day only (e.g. 'March 5' -> 2025-03-05)."},
+                        "caller_timezone": {"type": "string", "description": "Optional IANA timezone only when the caller/lead timezone is known or explicitly stated, e.g. America/Chicago. This is for caller-local display only; it does not control booking authority."}
                     },
                     "required": []
                 }
@@ -579,6 +622,8 @@ class OpenAISessionManager:
                     "Book an appointment for the chosen slot. Call once after the caller picks a slot from get_availability "
                     "and agrees in conversation (restate day/date/time briefly, get a clear yes—then call this tool). "
                     "Do not call this tool until they have confirmed the slot in natural dialogue. "
+                    "Confirm the appointment timezone. If the slot includes caller_display, mention caller-local time first and appointment/clinic time second; never call the clinic timezone 'my time'. "
+                    "If the active instructions require deposit, schedule-protection, policy, or payment-link consent, do not call this tool until that required consent is explicit. "
                     "This write action may take noticeable time; a short preamble in the same turn is appropriate after confirmation. "
                     "Do not say the appointment is booked until this tool succeeds. "
                     "If they book again or ask for other times later in the call, call get_availability again first.\n\n"
@@ -595,6 +640,7 @@ class OpenAISessionManager:
                         "contact_phone": {"type": "string", "description": "Callback phone. Use the actual number from context (caller_phone), not the literal phrase \"caller's number\"."},
                         "contact_email": {"type": "string", "description": "Email if provided. Confirm character by character when precision matters."},
                         "summary": {"type": "string", "description": "Brief reason for visit"},
+                        "caller_timezone": {"type": "string", "description": "Optional IANA timezone only when caller/lead timezone is known or explicitly stated. Used for call-record context and caller-local display, not for booking authority."},
                         "confirm_exact_slot": {"type": "boolean", "description": "Optional; ignored by the server. You may set true after verbal confirmation for logging/clarity."}
                     },
                     "required": ["slot_start_iso", "contact_name", "contact_phone"]
@@ -632,6 +678,7 @@ class OpenAISessionManager:
                 "description": (
                     "Cancel the caller's appointment. Use the event_id from list_my_bookings. Ownership is verified by phone number (name is not used as an ownership gate because AI transcription can produce variants). "
                     "Only call this after the caller has confirmed the exact booking; if multiple bookings remain unresolved, do not use this tool and offer team follow-up instead. "
+                    "Confirm the appointment being cancelled, including its timezone when available. "
                     "This write action may take noticeable time; a short preamble in the same turn is appropriate after confirmation. "
                     "Do not say the appointment was cancelled until this tool succeeds. "
                     "If they want to book a new time after cancelling, call get_availability again—do not reuse an old slot list from the conversation.\n\n"
@@ -670,7 +717,8 @@ class OpenAISessionManager:
                         "event_id": {"type": "string", "description": "Event id from list_my_bookings for the appointment to reschedule."},
                         "new_slot_start_iso": {"type": "string", "description": "New start time (exact ISO value from get_availability). Do not invent or paraphrase the time."},
                         "contact_phone": {"type": "string", "description": "Caller's phone. Omit to use the number from context (caller_phone). If the caller gives a different number verbally, confirm it digit by digit before calling."},
-                        "contact_name": {"type": "string", "description": "Caller's name. Use with contact_phone to verify ownership."}
+                        "contact_name": {"type": "string", "description": "Caller's name. Use with contact_phone to verify ownership."},
+                        "caller_timezone": {"type": "string", "description": "Optional IANA timezone only when caller/lead timezone is known or explicitly stated. Used for caller-local display and call-record context."}
                     },
                     "required": ["event_id", "new_slot_start_iso"]
                 }
@@ -695,9 +743,15 @@ class OpenAISessionManager:
                         "reason": {"type": "string", "description": "Brief reason for handoff (e.g. caller asked for a person, escalation)."},
                         "contact_name": {"type": "string", "description": "Caller's name if known."},
                         "contact_phone": {"type": "string", "description": "Callback number. Use actual number from context (caller_phone) if omitted."},
+                        "contact_email": {"type": "string", "description": "Email if known."},
                         "issue_summary": {"type": "string", "description": "Brief issue or reason for call (for agent context)."},
                         "priority": {"type": "string", "description": "Urgency: emergency, same_day, routine (or high/normal)."},
-                        "call_summary": {"type": "string", "description": "Short summary of the call for the agent."}
+                        "call_summary": {"type": "string", "description": "Short summary of the call for the agent."},
+                        "outcome_tag": {
+                            "type": "string",
+                            "enum": list(sorted(APPOINTMENT_SETTER_OUTCOME_TAGS)),
+                            "description": "Appointment-setter outcome tag. Defaults to transfer-needed for human handoff."
+                        }
                     },
                     "required": ["reason"]
                 }
@@ -1027,6 +1081,34 @@ class OpenAIService:
         except Exception:
             return raw
 
+    def _booking_timezone_context(
+        self,
+        connection_manager,
+        *,
+        explicit_timezone: Any = None,
+        contact_phone: Any = None,
+    ) -> tuple[str | None, str]:
+        """
+        Caller timezone context for display only.
+
+        Booking itself remains anchored to the appointment/business timezone in
+        google_calendar_booking_service.
+        """
+        state = getattr(connection_manager, "state", None)
+        lead_tz = normalize_timezone_name(getattr(state, "outbound_contact_timezone", None))
+        if lead_tz:
+            return lead_tz, "lead"
+
+        explicit = normalize_timezone_name(self._as_text(explicit_timezone))
+        if explicit:
+            return explicit, "explicit"
+
+        phone = self._as_text(contact_phone) or self._as_text(getattr(state, "caller_phone_number", None))
+        inferred = infer_timezone_from_phone(phone)
+        if inferred:
+            return inferred, "caller_id_hint"
+        return None, "none"
+
     def _normalize_and_validate_tool_args(
         self,
         tool_name: str,
@@ -1039,6 +1121,7 @@ class OpenAIService:
         """
         normalized = dict(args or {})
         caller_phone = self._as_text(getattr(connection_manager.state, "caller_phone_number", None))
+        outcome_tag_values = ", ".join(sorted(APPOINTMENT_SETTER_OUTCOME_TAGS))
 
         def _phone_with_fallback(raw: Any) -> str:
             p = self._as_text(raw)
@@ -1054,6 +1137,17 @@ class OpenAIService:
                 return caller_phone
             return p
 
+        def _normalize_outcome_tag_arg(default: str | None = None) -> str | None:
+            raw = normalized.get("outcome_tag")
+            if raw in (None, ""):
+                normalized["outcome_tag"] = default
+                return None
+            outcome_tag = normalize_call_record_outcome_tag(raw)
+            if not outcome_tag:
+                return f"Invalid outcome_tag for {tool_name}; expected one of: {outcome_tag_values}."
+            normalized["outcome_tag"] = outcome_tag
+            return None
+
         if tool_name == "end_call":
             normalized["reason"] = self._as_text(normalized.get("reason"))
             return True, normalized, None
@@ -1068,6 +1162,9 @@ class OpenAIService:
             normalized["call_summary"] = self._as_text(normalized.get("call_summary"))
             normalized["preferred_callback_time"] = self._as_text(normalized.get("preferred_callback_time")) or None
             normalized["service_address"] = self._as_text(normalized.get("service_address")) or None
+            outcome_error = _normalize_outcome_tag_arg(default="transfer-needed")
+            if outcome_error:
+                return False, normalized, outcome_error
             if not normalized["reason"]:
                 return False, normalized, "Missing required field for request_human_handoff: reason."
             return True, normalized, None
@@ -1085,6 +1182,9 @@ class OpenAIService:
             confirmed_slot = normalized.get("confirmed_slot")
             if confirmed_slot not in (None, "") and not isinstance(confirmed_slot, dict):
                 return False, normalized, f"Invalid confirmed_slot for {tool_label}; expected an object."
+            outcome_error = _normalize_outcome_tag_arg()
+            if outcome_error:
+                return False, normalized, outcome_error
             required = ["contact_name", "contact_phone", "issue_summary", "priority", "call_summary"]
             missing = [f for f in required if not normalized.get(f)]
             if missing:
@@ -1104,6 +1204,13 @@ class OpenAIService:
                 return False, normalized, "Invalid for_date for get_availability; expected YYYY-MM-DD."
             normalized["days_ahead"] = days
             normalized["for_date"] = for_date
+            caller_tz, caller_tz_source = self._booking_timezone_context(
+                connection_manager,
+                explicit_timezone=normalized.get("caller_timezone"),
+                contact_phone=caller_phone,
+            )
+            normalized["caller_timezone"] = caller_tz
+            normalized["caller_timezone_source"] = caller_tz_source
             return True, normalized, None
 
         if tool_name == "book_appointment":
@@ -1113,6 +1220,13 @@ class OpenAIService:
             normalized["contact_email"] = self._as_text(normalized.get("contact_email")) or None
             normalized["summary"] = self._as_text(normalized.get("summary")) or None
             normalized["confirm_exact_slot"] = self._as_bool(normalized.get("confirm_exact_slot"))
+            caller_tz, caller_tz_source = self._booking_timezone_context(
+                connection_manager,
+                explicit_timezone=normalized.get("caller_timezone"),
+                contact_phone=normalized.get("contact_phone"),
+            )
+            normalized["caller_timezone"] = caller_tz
+            normalized["caller_timezone_source"] = caller_tz_source
             missing = [f for f in ("slot_start_iso", "contact_name", "contact_phone") if not normalized.get(f)]
             if missing:
                 return False, normalized, f"Missing required field(s) for book_appointment: {', '.join(missing)}."
@@ -1139,6 +1253,13 @@ class OpenAIService:
             normalized["new_slot_start_iso"] = self._as_text(normalized.get("new_slot_start_iso"))
             normalized["contact_phone"] = _phone_with_fallback(normalized.get("contact_phone"))
             normalized["contact_name"] = self._as_text(normalized.get("contact_name")) or None
+            caller_tz, caller_tz_source = self._booking_timezone_context(
+                connection_manager,
+                explicit_timezone=normalized.get("caller_timezone"),
+                contact_phone=normalized.get("contact_phone"),
+            )
+            normalized["caller_timezone"] = caller_tz
+            normalized["caller_timezone_source"] = caller_tz_source
             missing = [f for f in ("event_id", "new_slot_start_iso") if not normalized.get(f)]
             if missing:
                 return False, normalized, f"Missing required field(s) for edit_booking: {', '.join(missing)}."
@@ -1449,6 +1570,10 @@ class OpenAIService:
                 "item": item
             })
             if trigger_response:
+                # Realtime can still be closing the response that emitted the
+                # function call; creating the next response in the same tick can
+                # raise conversation_already_has_active_response.
+                await asyncio.sleep(_TOOL_RESPONSE_CREATE_DELAY_SECONDS)
                 await connection_manager.send_to_openai({"type": "response.create"})
         except Exception as e:
             Log.error(f"Failed to send tool result: {e}")
@@ -1594,6 +1719,8 @@ class OpenAIService:
                     transcript=None,
                     call_sid=call_sid,
                     service_address=(args.get("service_address") or "").strip() or None,
+                    outcome_tag=args.get("outcome_tag") or "transfer-needed",
+                    metadata=_build_call_record_metadata(connection_manager),
                 )
                 asyncio.create_task(save_call_record_async(payload))
             from services.twilio_service import TwilioService
@@ -1613,9 +1740,31 @@ class OpenAIService:
                 call_record_payload_to_supabase_updates,
                 update_existing_call_record_from_payload_async,
             )
+            state = connection_manager.state
+            if (
+                getattr(state, "appointment_booked", False)
+                and args.get("outcome_tag") == "booking-error"
+            ):
+                confirmed_display = getattr(state, "confirmed_slot_display", None)
+                Log.event("Suppressing booking-error after confirmed booking", {
+                    "tool_name": name,
+                    "call_sid": getattr(state, "call_sid", None),
+                    "confirmed_slot_display": confirmed_display,
+                })
+                payload = {
+                    "success": True,
+                    "message": (
+                        "Booking already succeeded. Do not save a booking-error; "
+                        "confirm the appointment to the caller."
+                    ),
+                }
+                if confirmed_display:
+                    payload["confirmed_slot_display"] = confirmed_display
+                await self._send_tool_result(connection_manager, call_id, json.dumps(payload))
+                return True
             contact_phone = (args.get("contact_phone") or "").strip()
             if not contact_phone or _is_placeholder_phone(contact_phone):
-                fallback = getattr(connection_manager.state, "caller_phone_number", None) or ""
+                fallback = getattr(state, "caller_phone_number", None) or ""
                 if fallback:
                     contact_phone = fallback
             contact = {
@@ -1623,17 +1772,46 @@ class OpenAIService:
                 "phone": contact_phone,
                 "email": args.get("contact_email") or "",
             }
-            call_sid = getattr(connection_manager.state, "call_sid", None)
+            call_sid = getattr(state, "call_sid", None)
+            metadata = _build_call_record_metadata(connection_manager)
+            confirmed_slot = args.get("confirmed_slot")
+            calendar_event_link = None
+            pending_booking = getattr(state, "pending_booking_context", None)
+            if getattr(state, "appointment_booked", False) and isinstance(pending_booking, dict):
+                pending_slot = pending_booking.get("confirmed_slot")
+                if not isinstance(confirmed_slot, dict) and isinstance(pending_slot, dict):
+                    confirmed_slot = pending_slot
+                pending_link = (pending_booking.get("calendar_event_link") or "").strip()
+                if pending_link:
+                    calendar_event_link = pending_link
+                event_id = (pending_booking.get("event_id") or "").strip()
+                appointment_entry = {
+                    "event_id": event_id or None,
+                    "state": "booked",
+                    "confirmed_slot": confirmed_slot if isinstance(confirmed_slot, dict) else None,
+                    "calendar_event_link": calendar_event_link,
+                    "summary": pending_booking.get("appointment_summary") or None,
+                    "created_call_sid": call_sid,
+                    "last_interaction_call_sid": call_sid,
+                }
+                if appointment_entry["confirmed_slot"] or appointment_entry["calendar_event_link"]:
+                    metadata["appointments"] = [appointment_entry]
+                if event_id:
+                    metadata["booking_event_id"] = event_id
+                metadata["booking_state"] = "booked"
             payload = build_call_record_payload(
                 contact=contact,
                 issue_summary=args.get("issue_summary") or "",
                 priority=args.get("priority") or "normal",
                 call_summary=args.get("call_summary") or "",
                 preferred_callback_time=args.get("preferred_callback_time"),
-                confirmed_slot=args.get("confirmed_slot"),
+                confirmed_slot=confirmed_slot,
+                calendar_event_link=calendar_event_link,
                 transcript=None,
                 call_sid=call_sid,
                 service_address=(args.get("service_address") or "").strip() or None,
+                outcome_tag=args.get("outcome_tag"),
+                metadata=metadata,
             )
             already_submitted = getattr(connection_manager.state, "call_record_saved", getattr(connection_manager.state, "lead_submitted", False))
             resolved_call_record_id = getattr(connection_manager.state, "resolved_call_record_id", getattr(connection_manager.state, "resolved_business_lead_id", None))
@@ -1679,7 +1857,13 @@ class OpenAIService:
             # Run blocking Google Calendar call in thread so the event loop stays responsive
             result = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: booking_get_availability(days_ahead=days_ahead, for_date=for_date),
+                lambda: booking_get_availability(
+                    days_ahead=days_ahead,
+                    for_date=for_date,
+                    caller_timezone=args.get("caller_timezone"),
+                    caller_timezone_source=args.get("caller_timezone_source"),
+                    caller_phone=getattr(connection_manager.state, "caller_phone_number", None),
+                ),
             )
             by_day = result.get("by_day") or {}
             slots_flat = result.get("slots_flat") or []
@@ -1717,14 +1901,23 @@ class OpenAIService:
                     for bucket in ("morning", "afternoon", "evening"):
                         slot_list = day_data.get(bucket) or []
                         if slot_list:
-                            times = [f"{s['display']} ({s['start']})" for s in slot_list]
+                            times = []
+                            for s in slot_list:
+                                display = s.get("display", s.get("start", ""))
+                                caller_display = s.get("caller_display")
+                                if caller_display and caller_display != display:
+                                    display = f"{display}; caller local: {caller_display}"
+                                times.append(f"{display} ({s['start']})")
                             parts.append(f"  {bucket.capitalize()}: " + "; ".join(times))
                     if len(parts) > 1:
                         lines.append("\n".join(parts))
                 body = "\n\n".join(lines) if lines else "No slots in the requested range."
                 if slots_flat:
                     first = slots_flat[0]
-                    body = f"Earliest slot: {first.get('display', first.get('start', ''))} ({first.get('start', '')}) — suggest this first for emergencies.\n\n" + body
+                    first_display = first.get('display', first.get('start', ''))
+                    if first.get("caller_display") and first.get("caller_display") != first_display:
+                        first_display = f"{first_display}; caller local: {first.get('caller_display')}"
+                    body = f"Earliest slot: {first_display} ({first.get('start', '')}) — suggest this first for emergencies.\n\n" + body
                 msg = "Available slots by day and time (use the ISO start in parentheses for book_appointment):\n\n" + body
                 await self._send_tool_result(connection_manager, call_id, msg)
             return True
@@ -1755,6 +1948,9 @@ class OpenAIService:
                     ]
                 for idx, b in enumerate(ranked):
                     display = b.get('display', b.get('start', ''))
+                    caller_display = self._as_text(b.get("caller_display"))
+                    if caller_display and caller_display != display:
+                        display = f"{display}; caller local: {caller_display}"
                     summary = self._as_text(b.get("summary"))
                     booked_under = self._as_text(b.get("caller_name"))
                     visit_summary = self._as_text(b.get("visit_summary"))
@@ -1835,6 +2031,8 @@ class OpenAIService:
                     new_slot_start_iso=args.get("new_slot_start_iso") or "",
                     contact_phone=edit_phone,
                     contact_name=edit_name,
+                    caller_timezone=args.get("caller_timezone"),
+                    caller_timezone_source=args.get("caller_timezone_source"),
                 ),
             )
             if isinstance(result, dict) and result.get("success"):
@@ -1843,6 +2041,12 @@ class OpenAIService:
                 connection_manager.state.confirmed_slot_display = (
                     (slot.get("display") if isinstance(slot, dict) else None) or result.get("message")
                 )
+                connection_manager.state.pending_booking_context = {
+                    "event_id": result.get("event_id"),
+                    "confirmed_slot": result.get("confirmed_slot"),
+                    "calendar_event_link": result.get("calendar_event_link"),
+                    "appointment_summary": (args.get("summary") or "").strip() or None,
+                }
                 call_sid = getattr(connection_manager.state, "call_sid", None)
                 if call_sid and result.get("confirmed_slot") is not None:
                     from services.call_records_service import sync_call_record_after_booking_action_async
@@ -1888,6 +2092,8 @@ class OpenAIService:
                     contact_phone=book_phone,
                     contact_email=args.get("contact_email"),
                     summary=args.get("summary"),
+                    caller_timezone=args.get("caller_timezone"),
+                    caller_timezone_source=args.get("caller_timezone_source"),
                 ),
             )
             if isinstance(result, dict) and result.get("success"):
@@ -1896,6 +2102,12 @@ class OpenAIService:
                 connection_manager.state.confirmed_slot_display = (
                     (slot.get("display") if isinstance(slot, dict) else None) or result.get("message")
                 )
+                connection_manager.state.pending_booking_context = {
+                    "event_id": result.get("event_id"),
+                    "confirmed_slot": result.get("confirmed_slot"),
+                    "calendar_event_link": result.get("calendar_event_link"),
+                    "appointment_summary": (args.get("summary") or "").strip() or None,
+                }
                 call_sid = getattr(connection_manager.state, "call_sid", None)
                 if call_sid and result.get("confirmed_slot") is not None:
                     from services.call_records_service import sync_call_record_after_booking_action_async
@@ -2023,21 +2235,51 @@ class OpenAIService:
                 return True
         return False
 
-    async def finalize_goodbye(self, connection_manager) -> None:
+    async def finalize_goodbye(self, connection_manager, audio_service=None) -> None:
         """After goodbye audio is finished, wait for playback then close and optionally complete the call via REST."""
         self._pending_goodbye = False
         self._goodbye_audio_heard = False
         self._goodbye_item_id = None
         self._cancel_goodbye_watchdog()
-        # Mark Twilio as closed immediately so late OpenAI events never send (avoids "WebSocket is not connected" after REST hangup).
-        connection_manager.mark_twilio_closed()
-        # Grace period so the caller hears the full farewell before we hang up
+
+        # Wait until Twilio has played buffered farewell audio before hangup.
         grace = getattr(Config, 'END_CALL_GRACE_SECONDS', 6)
-        try:
-            Log.info(f"Grace sleep before hangup: {grace}s")
-            await asyncio.sleep(grace)
-        except Exception:
-            pass
+        dynamic_marks = bool(getattr(Config, 'END_CALL_DYNAMIC_MARKS', True))
+        if dynamic_marks and audio_service is not None:
+            tail = max(0.0, float(getattr(Config, 'END_CALL_TAIL_SECONDS', 0.75) or 0.0))
+            grace_seconds = max(0.0, float(grace or 0.0))
+            tail = min(tail, grace_seconds)
+            wait_timeout = max(0.0, grace_seconds - tail)
+            try:
+                pending_marks = audio_service.pending_mark_count()
+                if pending_marks:
+                    Log.info(f"Waiting for Twilio goodbye playback marks: pending={pending_marks}, timeout={wait_timeout}s")
+                    drained = await audio_service.wait_for_marks_drained(wait_timeout)
+                    if drained:
+                        Log.info("Twilio goodbye playback marks drained")
+                    else:
+                        Log.info("Twilio goodbye playback mark wait timed out; hanging up after tail")
+                else:
+                    Log.info("No pending Twilio goodbye playback marks before hangup")
+                if tail > 0:
+                    Log.info(f"Tail sleep before hangup: {tail}s")
+                    await asyncio.sleep(tail)
+            except Exception as e:
+                Log.error(f"Dynamic goodbye playback wait failed; using grace sleep: {e}")
+                try:
+                    Log.info(f"Grace sleep before hangup: {grace}s")
+                    await asyncio.sleep(grace)
+                except Exception:
+                    pass
+        else:
+            try:
+                Log.info(f"Grace sleep before hangup: {grace}s")
+                await asyncio.sleep(grace)
+            except Exception:
+                pass
+
+        # Mark Twilio as closed so late OpenAI events never send after REST hangup.
+        connection_manager.mark_twilio_closed()
         if Config.has_twilio_credentials():
             try:
                 from twilio.rest import Client

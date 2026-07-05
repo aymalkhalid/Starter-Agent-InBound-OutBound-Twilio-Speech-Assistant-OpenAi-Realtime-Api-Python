@@ -236,6 +236,7 @@ async def get_call_records(
     is_spam: bool | None = Query(None),
     status: str | None = Query(None),
     address: str | None = Query(None),
+    call_direction: str | None = Query(None),
     key: str | None = Query(None, alias="key"),
     x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
 ):
@@ -263,6 +264,7 @@ async def get_call_records(
         is_spam=is_spam,
         status=status,
         address=address,
+        call_direction=call_direction,
     )
     return {"call_records": records, "count": len(records), "total": total}
 
@@ -520,9 +522,19 @@ async def patch_settings(
             load_overrides_sync,
             apply_overrides_to_config,
         )
+        from services.timezone_utils import normalize_timezone_name
+
         allowed = {k: v for k, v in body.items() if k in OVERRIDABLE_KEYS}
         if not allowed:
             raise HTTPException(status_code=400, detail="No valid setting keys to update")
+        if "TIMEZONE" in allowed:
+            normalized_timezone = normalize_timezone_name(allowed.get("TIMEZONE"))
+            if not normalized_timezone:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid TIMEZONE; use an IANA timezone such as America/Los_Angeles.",
+                )
+            allowed["TIMEZONE"] = normalized_timezone
         if not save_overrides_sync(allowed):
             raise HTTPException(status_code=503, detail="Settings store unavailable (Supabase required)")
         apply_overrides_to_config(load_overrides_sync())
@@ -623,6 +635,58 @@ def _require_outbound_enabled():
         raise HTTPException(status_code=403, detail="Outbound calling not enabled (set OUTBOUND_ENABLED=true with Twilio + Supabase)")
 
 
+def _outbound_public_base_url(request: Request) -> str:
+    """Return the public base URL Twilio can use to fetch outbound TwiML."""
+    base_url = Config.OUTBOUND_BASE_URL or str(request.base_url).rstrip("/")
+    if not base_url or any(x in base_url.lower() for x in ("localhost", "127.0.0.1")):
+        raise HTTPException(
+            status_code=400,
+            detail="Outbound TwiML URL is not reachable by Twilio (localhost/127.0.0.1). Set OUTBOUND_BASE_URL in .env to your public URL (e.g. https://your-ngrok-subdomain.ngrok.io).",
+        )
+    return base_url
+
+
+async def _dial_outbound_contact_now(
+    request: Request,
+    campaign_id: str,
+    contact_id: str,
+) -> dict:
+    """Dial one existing outbound contact and register its campaign context."""
+    from services.outbound_service import get_campaign_sync, get_contact_sync, update_contact_status_sync
+
+    campaign = await asyncio.to_thread(get_campaign_sync, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    contact = await asyncio.to_thread(get_contact_sync, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if contact.get("campaign_id") != campaign_id:
+        raise HTTPException(status_code=404, detail="Contact not in this campaign")
+
+    phone = (contact.get("phone") or "").strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Contact has no phone number")
+    if contact.get("status") == "calling":
+        raise HTTPException(status_code=409, detail="Contact is already being called")
+
+    base_url = _outbound_public_base_url(request)
+    twiml_url = f"{base_url}/outbound-call-twiml/{campaign_id}?contact_id={quote(contact_id, safe='')}"
+    status_callback = f"{base_url}/outbound-call-status"
+    await asyncio.to_thread(update_contact_status_sync, contact_id, "calling")
+    try:
+        call = await TwilioService.create_outbound_call(
+            to=phone,
+            twiml_url=twiml_url,
+            status_callback=status_callback,
+        )
+        TwilioService.register_outbound_context(call.sid, campaign_id, contact_id)
+        await asyncio.to_thread(update_contact_status_sync, contact_id, "calling", call_sid=call.sid)
+        return {"ok": True, "call_sid": call.sid, "message": f"Calling {phone}"}
+    except Exception as e:
+        await asyncio.to_thread(update_contact_status_sync, contact_id, "failed", error=str(e)[:500])
+        raise HTTPException(status_code=502, detail=f"Dial failed: {e}")
+
+
 @app.get("/outbound/campaign-types", response_class=JSONResponse)
 async def get_outbound_campaign_types(
     request: Request,
@@ -632,8 +696,8 @@ async def get_outbound_campaign_types(
     """Return built-in campaign type definitions for the dashboard dropdown and template prefill.
     Does NOT require outbound enabled; presets are available before full outbound config."""
     _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
-    from services.outbound_service import get_campaign_types
-    return {"campaign_types": get_campaign_types()}
+    from services.outbound_service import get_campaign_types_for_dashboard
+    return {"campaign_types": get_campaign_types_for_dashboard()}
 
 
 @app.get("/outbound/campaigns", response_class=JSONResponse)
@@ -753,6 +817,54 @@ async def add_outbound_contacts(
     return {"contacts": inserted, "count": len(inserted)}
 
 
+@app.post("/outbound/campaigns/{campaign_id}/trigger-call", response_class=JSONResponse)
+async def trigger_outbound_call_from_lead(
+    request: Request,
+    campaign_id: str,
+    body: dict = Body(...),
+    key: str | None = Query(None, alias="key"),
+    x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
+):
+    """
+    One-shot lead intake API.
+
+    External systems can POST one lead to a campaign; the lead is inserted as an
+    outbound contact and called immediately using that campaign's prompt.
+    """
+    _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
+    _require_outbound_enabled()
+
+    from services.outbound_service import (
+        add_contacts_sync,
+        build_contact_from_lead_payload,
+        get_campaign_sync,
+    )
+
+    campaign = await asyncio.to_thread(get_campaign_sync, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    contact = build_contact_from_lead_payload(body)
+    if not (contact.get("phone") or "").strip():
+        raise HTTPException(status_code=400, detail="Lead phone number is required")
+
+    inserted = await asyncio.to_thread(add_contacts_sync, campaign_id, [contact])
+    if not inserted:
+        raise HTTPException(status_code=500, detail="Failed to create outbound contact")
+
+    contact_id = inserted[0].get("id")
+    if not contact_id:
+        raise HTTPException(status_code=500, detail="Created contact has no id")
+
+    dial_result = await _dial_outbound_contact_now(request, campaign_id, contact_id)
+    return {
+        **dial_result,
+        "campaign_id": campaign_id,
+        "contact_id": contact_id,
+        "contact": inserted[0],
+    }
+
+
 @app.delete("/outbound/campaigns/{campaign_id}/contacts/{contact_id}", response_class=JSONResponse)
 async def delete_outbound_contact(
     request: Request,
@@ -820,12 +932,7 @@ async def start_outbound_campaign(
             detail="No pending contacts to dial (retry resets failed contacts to pending)",
         )
     now_iso = datetime.now(timezone.utc).isoformat()
-    base_url = Config.OUTBOUND_BASE_URL or str(request.base_url).rstrip("/")
-    if not base_url or any(x in base_url.lower() for x in ("localhost", "127.0.0.1")):
-        raise HTTPException(
-            status_code=400,
-            detail="Outbound TwiML URL is not reachable by Twilio (localhost/127.0.0.1). Set OUTBOUND_BASE_URL in .env to your public URL (e.g. https://your-ngrok-subdomain.ngrok.io).",
-        )
+    base_url = _outbound_public_base_url(request)
     await asyncio.to_thread(update_campaign_sync, campaign_id, {"status": "running", "started_at": now_iso})
     asyncio.create_task(run_campaign(campaign_id, base_url))
     return {"ok": True, "message": f"Campaign started with {len(pending)} pending contacts"}
@@ -842,40 +949,7 @@ async def call_single_outbound_contact(
     """Dial a single contact manually. Does not change campaign status — just initiates one call."""
     _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
     _require_outbound_enabled()
-    from services.outbound_service import get_campaign_sync, get_contact_sync, update_contact_status_sync
-    campaign = await asyncio.to_thread(get_campaign_sync, campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-    contact = await asyncio.to_thread(get_contact_sync, contact_id)
-    if not contact:
-        raise HTTPException(status_code=404, detail="Contact not found")
-    phone = (contact.get("phone") or "").strip()
-    if not phone:
-        raise HTTPException(status_code=400, detail="Contact has no phone number")
-    if contact.get("status") == "calling":
-        raise HTTPException(status_code=409, detail="Contact is already being called")
-    base_url = Config.OUTBOUND_BASE_URL or str(request.base_url).rstrip("/")
-    # Twilio must be able to reach the TwiML URL when the callee answers (localhost is not reachable)
-    if not base_url or any(x in base_url.lower() for x in ("localhost", "127.0.0.1")):
-        raise HTTPException(
-            status_code=400,
-            detail="Outbound TwiML URL is not reachable by Twilio (localhost/127.0.0.1). Set OUTBOUND_BASE_URL in .env to your public URL (e.g. https://your-ngrok-subdomain.ngrok.io).",
-        )
-    twiml_url = f"{base_url}/outbound-call-twiml/{campaign_id}?contact_id={quote(contact_id, safe='')}"
-    status_callback = f"{base_url}/outbound-call-status"
-    await asyncio.to_thread(update_contact_status_sync, contact_id, "calling")
-    try:
-        call = await TwilioService.create_outbound_call(
-            to=phone,
-            twiml_url=twiml_url,
-            status_callback=status_callback,
-        )
-        TwilioService.register_outbound_context(call.sid, campaign_id, contact_id)
-        await asyncio.to_thread(update_contact_status_sync, contact_id, "calling", call_sid=call.sid)
-        return {"ok": True, "call_sid": call.sid, "message": f"Calling {phone}"}
-    except Exception as e:
-        await asyncio.to_thread(update_contact_status_sync, contact_id, "failed", error=str(e)[:500])
-        raise HTTPException(status_code=502, detail=f"Dial failed: {e}")
+    return await _dial_outbound_contact_now(request, campaign_id, contact_id)
 
 
 @app.post("/outbound/campaigns/{campaign_id}/contacts/{contact_id}/reset", response_class=JSONResponse)
@@ -1141,6 +1215,37 @@ def _extract_recording_sid_from_twilio_url(recording_link: str) -> str | None:
     return None
 
 
+def _parse_http_range_header(range_header: str, content_length: int) -> tuple[int, int] | None:
+    """Parse a single HTTP bytes range header against content length."""
+    if content_length <= 0:
+        return None
+    value = (range_header or "").strip().lower()
+    if not value.startswith("bytes="):
+        return None
+    spec = value[len("bytes="):].split(",", 1)[0].strip()
+    if "-" not in spec:
+        return None
+    start_s, end_s = spec.split("-", 1)
+    try:
+        if start_s == "":
+            suffix_len = int(end_s)
+            if suffix_len <= 0:
+                return None
+            start = max(content_length - suffix_len, 0)
+            end = content_length - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s else content_length - 1
+            if start < 0 or start >= content_length:
+                return None
+            end = min(end, content_length - 1)
+            if end < start:
+                return None
+    except ValueError:
+        return None
+    return start, end
+
+
 @app.get("/recordings/{recording_sid}/media")
 async def get_recording_media(
     request: Request,
@@ -1175,14 +1280,40 @@ async def get_recording_media(
                 detail=f"Twilio returned {response.status_code}",
             )
         content = response.content
+        content_length = len(content)
         headers = {
             "Content-Type": "audio/mpeg",
-            "Content-Length": str(len(content)),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "private, max-age=300",
         }
         if download:
             headers["Content-Disposition"] = f'attachment; filename="recording-{recording_sid}.mp3"'
         else:
             headers["Content-Disposition"] = "inline"
+        range_header = request.headers.get("range") if not download else None
+        if range_header:
+            byte_range = _parse_http_range_header(range_header, content_length)
+            if not byte_range:
+                return Response(
+                    status_code=416,
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Range": f"bytes */{content_length}",
+                    },
+                )
+            start, end = byte_range
+            partial = content[start:end + 1]
+            headers.update({
+                "Content-Length": str(len(partial)),
+                "Content-Range": f"bytes {start}-{end}/{content_length}",
+            })
+            return Response(
+                content=partial,
+                status_code=206,
+                media_type="audio/mpeg",
+                headers=headers,
+            )
+        headers["Content-Length"] = str(content_length)
         return Response(content=content, media_type="audio/mpeg", headers=headers)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail="Failed to fetch recording") from e
@@ -1271,11 +1402,13 @@ async def handle_media_stream(websocket: WebSocket):
 
         if direction == "outbound" and campaign_id and contact_id:
             connection_manager.state.is_outbound_call = True
+            connection_manager.state.outbound_campaign_id = campaign_id
+            connection_manager.state.outbound_contact_id = contact_id
             Log.event("Outbound call stream connected", {
                 "campaign_id": campaign_id,
                 "contact_id": contact_id,
             })
-            from services.outbound_service import build_outbound_system_message, get_contact_sync
+            from services.outbound_service import build_outbound_system_message, get_contact_sync, get_contact_timezone_from_contact
             outbound_system_message = await asyncio.to_thread(
                 build_outbound_system_message, campaign_id, contact_id
             )
@@ -1284,6 +1417,15 @@ async def handle_media_stream(websocket: WebSocket):
             contact = await asyncio.to_thread(get_contact_sync, contact_id)
             if contact and (contact.get("phone") or "").strip():
                 connection_manager.state.caller_phone_number = (contact.get("phone") or "").strip()
+            contact_timezone = get_contact_timezone_from_contact(contact)
+            if contact_timezone:
+                connection_manager.state.outbound_contact_timezone = contact_timezone
+                Log.event("Outbound contact timezone loaded", {
+                    "campaign_id": campaign_id,
+                    "contact_id": contact_id,
+                    "contact_timezone": contact_timezone,
+                    "source": "lead",
+                })
     except Exception:
         pass
     # Defer session init when context was not available up front so start.customParameters
@@ -1325,18 +1467,29 @@ async def handle_media_stream(websocket: WebSocket):
                 if outbound_ctx:
                     ob_campaign_id, ob_contact_id = outbound_ctx
                     connection_manager.state.is_outbound_call = True  # so send_initial_greeting uses minimal item even if build fails
+                    connection_manager.state.outbound_campaign_id = ob_campaign_id
+                    connection_manager.state.outbound_contact_id = ob_contact_id
                     Log.event("Outbound call stream context", {
                         "campaign_id": ob_campaign_id,
                         "contact_id": ob_contact_id,
                         "source": outbound_ctx_source,
                     })
-                    from services.outbound_service import build_outbound_system_message, get_contact_sync
+                    from services.outbound_service import build_outbound_system_message, get_contact_sync, get_contact_timezone_from_contact
                     outbound_system_message = await asyncio.to_thread(build_outbound_system_message, ob_campaign_id, ob_contact_id)
                     if not outbound_system_message:
                         Log.info("Outbound system message could not be built; falling back to default")
                     contact = await asyncio.to_thread(get_contact_sync, ob_contact_id)
                     if contact and (contact.get("phone") or "").strip():
                         connection_manager.state.caller_phone_number = (contact.get("phone") or "").strip()
+                    contact_timezone = get_contact_timezone_from_contact(contact)
+                    if contact_timezone:
+                        connection_manager.state.outbound_contact_timezone = contact_timezone
+                        Log.event("Outbound contact timezone loaded", {
+                            "campaign_id": ob_campaign_id,
+                            "contact_id": ob_contact_id,
+                            "contact_timezone": contact_timezone,
+                            "source": "lead",
+                        })
                 connection_manager.state.session_updated_event.clear()
                 await openai_service.initialize_session(connection_manager, system_message_override=outbound_system_message)
                 if not outbound_ctx:
@@ -1448,7 +1601,7 @@ async def handle_media_stream(websocket: WebSocket):
                 openai_service.clear_assistant_audio_suppression()
             # If a goodbye was queued and we've heard its audio, finalize after the response completes
             if openai_service.should_finalize_on_event(response):
-                await openai_service.finalize_goodbye(connection_manager)
+                await openai_service.finalize_goodbye(connection_manager, audio_service)
 
         # Run Twilio receiver and OpenAI receiver; plus a renewal loop for OpenAI session
         async def openai_receiver():

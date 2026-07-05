@@ -16,6 +16,7 @@ from system_instructions import (
 _PROMPT_KWARGS = {
     "company_name": "Example Co",
     "agent_name": "Alex",
+    "delivery_instruction": "# Delivery Style\nTarget tone: warm professional.",
     "language_instruction": "# Language\nUse English.",
     "accent_instruction": "# Accent\nUse clear phone speech.",
     "reasoning_effort_instruction": "## Reasoning effort\nSession API reasoning effort is `low`.",
@@ -24,6 +25,11 @@ _PROMPT_KWARGS = {
     "booking_instruction": "Booking tools are disabled.",
     "transfer_instruction": "Transfer is disabled.",
     "instructions_path": "prompts/main_system_instructions.md",
+}
+
+_APPOINTMENT_SETTER_PROMPT_KWARGS = {
+    **_PROMPT_KWARGS,
+    "instructions_path": "prompts/aesthetic_appointment_setter.md",
 }
 
 
@@ -47,9 +53,81 @@ def test_prompt_file_renders_generic_voice_agent():
     assert "wait_for_user" in prompt
     assert "unclear audio" in lower or "unclear" in lower
     assert "verbosity" in lower
+    assert "delivery style" in lower
     assert "get_availability" in prompt
     assert "plumbing" not in lower
     assert "industry" not in lower
+
+
+def test_aesthetic_appointment_setter_prompt_has_required_placeholders():
+    template = load_system_instructions("prompts/aesthetic_appointment_setter.md")
+    for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
+        assert placeholder in template, f"missing placeholder {placeholder}"
+
+
+def test_aesthetic_appointment_setter_prompt_renders_core_flow():
+    prompt = render_system_instructions(**_APPOINTMENT_SETTER_PROMPT_KWARGS)
+    lower = prompt.lower()
+    assert "outbound aesthetic clinic" in lower
+    assert "appointment setter" in lower
+    assert "wrinkle reset" in lower
+    assert "t-shape 2" in lower
+    assert "deposit" in lower
+    assert "pacific time" in lower
+    assert "for you, i have monday at 2 pm central" in lower
+    assert "1 pm pacific at the clinic" in lower
+    assert "do not\ncall the clinic timezone \"my time\"" in lower
+    assert "get_availability" in prompt
+    assert "book_appointment" in prompt
+    assert "save_call_record" in prompt
+    assert "request_human_handoff" in prompt
+    assert "wait_for_user" in prompt
+    assert "get_slots_tool" not in prompt
+    assert "create_appointment_tool" not in prompt
+    assert "update_contact_data_tool" not in prompt
+    assert "transfer_call" not in prompt
+    for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
+        assert placeholder not in prompt, f"unrendered placeholder {placeholder}"
+
+
+def test_aesthetic_appointment_setter_prompt_uses_lead_data_in_opener():
+    prompt = render_system_instructions(**_APPOINTMENT_SETTER_PROMPT_KWARGS)
+    lower = prompt.lower()
+    assert "use the contact name when available" in lower
+    assert "reference the offer" in lower
+    assert "do not mention phone, email" in lower
+    assert "Hi [contact name], this is Alex" in prompt
+
+
+def test_aesthetic_appointment_setter_prompt_locks_booking_sequence():
+    prompt = render_system_instructions(**_APPOINTMENT_SETTER_PROMPT_KWARGS)
+    lower = prompt.lower()
+    assert "use `get_availability` before offering exact times" in lower
+    assert "offer no more than two times at" in lower
+    assert "ask for consent to the deposit" in lower
+    assert "silence is not consent" in lower
+    assert "call `book_appointment` only after all of these are true" in lower
+    assert "`get_availability` returned the chosen slot" in lower
+    assert "the caller explicitly agreed to the deposit flow" in lower
+    assert "appointment is booked until `book_appointment` succeeds" in lower
+    assert "caller accepted the $29 secure-link deposit with" in lower
+    assert "go to transfer to human" in lower
+
+
+def test_aesthetic_appointment_setter_prompt_defines_outcome_tags():
+    prompt = render_system_instructions(**_APPOINTMENT_SETTER_PROMPT_KWARGS)
+    assert "exactly\none `outcome_tag`" in prompt
+    for tag in (
+        "booked",
+        "interested-callback",
+        "declined",
+        "do-not-contact",
+        "wrong-person",
+        "transfer-needed",
+        "booking-error",
+    ):
+        assert f"`{tag}`" in prompt
+    assert "Do not invent other outcome tags." in prompt
 
 
 def test_prompt_includes_openai_aligned_preamble_guidance():
@@ -86,6 +164,11 @@ def test_prompt_includes_tool_behavior_and_failure_recovery():
     assert "tool availability" in lower
     assert "tool-call eagerness" in lower
     assert "tool failures" in lower
+    assert "booking timezones" in lower
+    assert "appointment or business timezone as the booking authority" in lower
+    assert "never offer or confirm a bare time when caller timezone may differ" in lower
+    assert "caller-local time first" in lower
+    assert "never call it \"my time\"" in lower
     assert "do not repeatedly call the same tool with the same arguments after failure" in lower
     assert "entity collection order" in lower
     assert "spelled-out characters" in lower
@@ -158,12 +241,31 @@ def test_build_accent_instruction_keeps_language_separate():
     assert "Do not change response language based on the caller's accent." in text
 
 
+def test_build_delivery_instruction_controls_tone_and_expressiveness():
+    from config import _build_delivery_instruction
+
+    text = _build_delivery_instruction("calm helpful", "very_warm", "expressive", "relaxed")
+    assert "# Delivery Style" in text
+    assert "Target tone: calm helpful." in text
+    assert "more care and reassurance" in text
+    assert "upbeat energy and vocal variety" in text
+    assert "speak slightly slower" in text
+    assert "vary naturally rather than repeat mechanically" in text
+    assert "Do not mention these delivery controls to the caller." in text
+
+
 def test_rebuild_system_message_pins_english_by_default(monkeypatch):
     monkeypatch.setattr(Config, "ASSISTANT_LANGUAGE", "English")
+    monkeypatch.setattr(Config, "ASSISTANT_TONE", "warm professional")
+    monkeypatch.setattr(Config, "ASSISTANT_WARMTH", "warm")
+    monkeypatch.setattr(Config, "ASSISTANT_EXPRESSIVENESS", "balanced")
+    monkeypatch.setattr(Config, "ASSISTANT_PACING", "moderate")
     monkeypatch.setattr(Config, "LANGUAGE_SWITCH_POLICY", "default_only")
     monkeypatch.setattr(Config, "ASSISTANT_ACCENT", "neutral American")
     monkeypatch.setattr(Config, "ASSISTANT_ACCENT_STRENGTH", "light")
     rebuild_system_message()
+    assert "Target tone: warm professional." in Config.SYSTEM_MESSAGE
+    assert "Expressiveness: use mild natural emphasis" in Config.SYSTEM_MESSAGE
     assert "English is the default response language." in Config.SYSTEM_MESSAGE
     assert "Speak English with a light neutral American accent." in Config.SYSTEM_MESSAGE
     assert "mirror the user" in Config.SYSTEM_MESSAGE.lower()
@@ -195,6 +297,7 @@ def test_slow_tool_descriptions_include_preamble_sample_phrases(monkeypatch):
     monkeypatch.setattr("services.openai_service.has_call_record_backend_configured", lambda: True)
     monkeypatch.setattr("services.openai_service.is_booking_enabled", lambda: True)
     monkeypatch.setattr(Config, "HUMAN_TRANSFER_ENABLED", True)
+    monkeypatch.setattr(Config, "HUMAN_TRANSFER_URL", "https://example.test/transfer")
     tools = {tool["name"]: tool for tool in OpenAISessionManager._realtime_tools()}
     for name in (
         "get_availability",

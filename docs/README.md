@@ -7,11 +7,13 @@ Docs for the Twilio + OpenAI Realtime starter. Agent behavior is defined in `pro
 - [Onboarding](./ONBOARDING.md) — one-page clone → live agent checklist
 - [Prompt-as-code](./PROMPT_AS_CODE.md) — customize industries with code edits, prompt preview, and tests
 - [Multi-client workflow](./MULTI_CLIENT_WORKFLOW.md) — build a separate agent per client (real estate, lead qualifier, etc.)
+- [Aesthetic clinic appointment setter MVP](./APPOINTMENT_SETTER_MVP.md) — reusable outbound appointment-setter scope and implementation gates
+- [Booking timezones](./BOOKING_TIMEZONES.md) — appointment timezone authority, caller-local display, Google Calendar writes, dashboard booking links
 - [Client discovery template](./templates/CLIENT_DISCOVERY.md) — fillable kickoff form per new client
 - [Architecture](./ARCHITECTURE.md)
 - [Master diagram](./MASTER_DIAGRAM.md) — PNG poster + Mermaid source + step-by-step breakdown ([`images/MasterArchitectureDiagram.png`](./images/MasterArchitectureDiagram.png))
 - [Diagrams](./DIAGRAMS.md) — Mermaid flows (23 sections); index at top
-- [Configuration](./CONFIGURATION.md) — prompt placeholders, language/accent, reasoning effort, VAD, silence handling
+- [Configuration](./CONFIGURATION.md) — prompt placeholders, tone/language/accent, reasoning effort, VAD, silence handling
 - [Realtime Tools](./TOOLS.md)
 - [Cloud Run Deploy](./DEPLOY_CLOUD_RUN.md)
 

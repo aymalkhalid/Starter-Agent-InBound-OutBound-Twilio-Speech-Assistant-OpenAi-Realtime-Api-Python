@@ -14,6 +14,8 @@ from services.webhook_service import (
     _derive_primary_booking_projection,
     _merge_business_metadata,
     _upsert_business_appointment,
+    build_handoff_payload,
+    handoff_payload_to_supabase_row,
     handoff_payload_to_supabase_updates,
     sync_business_lead_after_booking_action_sync,
     update_business_lead_from_payload_sync,
@@ -55,6 +57,24 @@ def test_handoff_payload_to_supabase_updates_filters_nulls():
     assert "recording_link" not in updates
     assert "metadata" not in updates
     assert "service_address" not in updates
+
+
+def test_handoff_payload_maps_appointment_setter_outcome_to_status():
+    payload = build_handoff_payload(
+        contact={"name": "Avery", "phone": "+15551234567", "email": ""},
+        issue_summary="Caller wants a callback about Wrinkle Reset.",
+        priority="normal",
+        call_summary="Caller was interested but asked for a later callback.",
+        outcome_tag="interested_callback",
+        metadata={"source": "facebook_lead"},
+    )
+
+    row = handoff_payload_to_supabase_row(payload)
+
+    assert payload["outcome_tag"] == "interested-callback"
+    assert payload["metadata"]["source"] == "facebook_lead"
+    assert payload["metadata"]["appointment_setter"]["outcome_tag"] == "interested-callback"
+    assert row["lead_status"] == "interested-callback"
 
 
 def test_merge_business_metadata_archives_previous_interaction():
@@ -364,3 +384,76 @@ def test_update_business_lead_from_payload_sync_keeps_backend_synthesized_follow
     assert captured["updates"]["call_summary"] == (
         "Emeril called to cancel Move-out cleaning at house 123 Street 7, which had been scheduled for Mon Apr 20 at 09:00 PM."
     )
+
+
+def test_infer_call_direction_uses_metadata_and_outbound_call_sid_fallback():
+    from services.webhook_service import _enrich_call_direction, _infer_call_direction
+
+    outbound_sids = {"CA_outbound_1"}
+    assert _infer_call_direction({"metadata": {"call_direction": "outbound"}}, outbound_sids) == "outbound"
+    assert _infer_call_direction({"call_sid": "CA_outbound_1"}, outbound_sids) == "outbound"
+    assert _infer_call_direction({"call_sid": "CA_inbound_1"}, outbound_sids) == "inbound"
+
+    rows = _enrich_call_direction(
+        [
+            {"metadata": {"call_direction": "outbound"}},
+            {"call_sid": "CA_inbound_1"},
+        ],
+        list(outbound_sids),
+    )
+    assert rows[0]["call_direction"] == "outbound"
+    assert rows[1]["call_direction"] == "inbound"
+
+
+def test_apply_call_direction_filter_outbound_and_inbound():
+    from services.webhook_service import _apply_call_direction_filter
+
+    class FakeQuery:
+        def __init__(self):
+            self.ops = []
+
+        def or_(self, expr):
+            self.ops.append(("or", expr))
+            return self
+
+        def neq(self, field, value):
+            self.ops.append(("neq", field, value))
+            return self
+
+        @property
+        def not_(self):
+            return _FakeNot(self)
+
+        def in_(self, field, values):
+            self.ops.append(("in", field, values))
+            return self
+
+    class _FakeNot:
+        def __init__(self, parent):
+            self.parent = parent
+
+        def in_(self, field, values):
+            self.parent.ops.append(("not_in", field, values))
+            return self.parent
+
+    outbound_query = FakeQuery()
+    _apply_call_direction_filter(outbound_query, "outbound", None, ["CA_outbound_1"])
+    assert outbound_query.ops == [
+        ("or", "metadata->>call_direction.eq.outbound,call_sid.in.(CA_outbound_1)"),
+    ]
+
+    inbound_query = FakeQuery()
+    _apply_call_direction_filter(inbound_query, "inbound", None, ["CA_outbound_1"])
+    assert ("neq", "metadata->>call_direction", "outbound") in inbound_query.ops
+    assert ("not_in", "call_sid", ["CA_outbound_1"]) in inbound_query.ops
+
+
+def test_dashboard_exposes_call_direction_filter():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "static" / "dashboard.html").read_text(encoding="utf-8")
+    assert 'id="filter-call-direction"' in html
+    assert "<th>Direction</th>" in html
+    assert "state.call_direction" in html
+    assert "params.set(\"call_direction\"" in html
+    assert "function recordDirection(" in html

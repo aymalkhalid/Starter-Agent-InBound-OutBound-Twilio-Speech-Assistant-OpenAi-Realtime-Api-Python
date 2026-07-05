@@ -18,6 +18,26 @@ from services.log_utils import Log
 
 _UNSET = object()
 BUSINESS_INTERACTION_HISTORY_LIMIT = 10
+APPOINTMENT_SETTER_OUTCOME_TAGS = frozenset({
+    "booked",
+    "interested-callback",
+    "declined",
+    "do-not-contact",
+    "wrong-person",
+    "transfer-needed",
+    "booking-error",
+})
+
+
+def _normalize_outcome_tag(value: Any) -> str | None:
+    """Return a supported appointment-setter outcome tag, or None."""
+    text = str(value or "").strip().lower().replace("_", "-")
+    if text in APPOINTMENT_SETTER_OUTCOME_TAGS:
+        return text
+    return None
+
+
+normalize_appointment_setter_outcome_tag = _normalize_outcome_tag
 
 
 def _date_range_to_utc_iso(date_from_str: str | None, date_to_str: str | None) -> tuple[str | None, str | None]:
@@ -75,11 +95,20 @@ def build_handoff_payload(
     call_summary: str,
     preferred_callback_time: str | None = None,
     confirmed_slot: dict[str, Any] | None = None,
+    calendar_event_link: str | None = None,
     transcript: str | None = None,
     call_sid: str | None = None,
     service_address: str | None = None,
+    outcome_tag: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the JSON payload for lead handoff (shared by all backends)."""
+    normalized_outcome = _normalize_outcome_tag(outcome_tag)
+    metadata_out = _coerce_metadata_dict(metadata)
+    if normalized_outcome:
+        appointment_setter_meta = _coerce_metadata_dict(metadata_out.get("appointment_setter"))
+        appointment_setter_meta["outcome_tag"] = normalized_outcome
+        metadata_out["appointment_setter"] = appointment_setter_meta
     return {
         "company_name": Config.COMPANY_NAME,
         "industry": Config.AGENT_LABEL,
@@ -90,10 +119,13 @@ def build_handoff_payload(
         "call_summary": call_summary,
         "preferred_callback_time": preferred_callback_time,
         "confirmed_slot": confirmed_slot,
+        "calendar_event_link": calendar_event_link,
         "transcript": transcript,
         "call_sid": call_sid,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "service_address": service_address,
+        "outcome_tag": normalized_outcome,
+        "metadata": metadata_out or None,
     }
 
 
@@ -528,7 +560,7 @@ def handoff_payload_to_supabase_row(payload: dict[str, Any]) -> dict[str, Any]:
     Used for both insert (first submit_lead) and update (second submit_lead by call_sid).
     """
     contact = payload.get("contact") or {}
-    return {
+    row = {
         "company_name": payload.get("company_name"),
         "industry": payload.get("industry"),
         "priority": payload.get("priority"),
@@ -547,6 +579,10 @@ def handoff_payload_to_supabase_row(payload: dict[str, Any]) -> dict[str, Any]:
         "metadata": payload.get("metadata"),
         "service_address": payload.get("service_address"),
     }
+    outcome_tag = _normalize_outcome_tag(payload.get("outcome_tag"))
+    if outcome_tag:
+        row["lead_status"] = outcome_tag
+    return row
 
 
 def handoff_payload_to_supabase_updates(
@@ -1138,6 +1174,81 @@ async def update_business_lead_from_payload_async(lead_id: str | None, payload: 
     return ok
 
 
+def _outbound_contacts_table() -> str:
+    return (getattr(Config, "SUPABASE_OUTBOUND_CONTACTS_TABLE", None) or "outbound_contacts").strip()
+
+
+def _get_outbound_call_sids_sync(client: Any) -> list[str]:
+    """Return distinct Twilio call_sids linked to outbound campaign contacts."""
+    try:
+        r = (
+            client.table(_outbound_contacts_table())
+            .select("call_sid")
+            .not_.is_("call_sid", "null")
+            .execute()
+        )
+        rows = (r.data or []) if hasattr(r, "data") else []
+        sids: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            sid = str(row.get("call_sid") or "").strip()
+            if sid and sid not in seen:
+                seen.add(sid)
+                sids.append(sid)
+        return sids
+    except Exception as e:
+        Log.error(f"Outbound call_sid lookup error: {e}")
+        return []
+
+
+def _infer_call_direction(row: dict[str, Any], outbound_sids: set[str]) -> str:
+    """Infer inbound/outbound for a call-record row."""
+    metadata = _coerce_metadata_dict(row.get("metadata"))
+    direction = str(metadata.get("call_direction") or "").strip().lower()
+    if direction in ("inbound", "outbound"):
+        return direction
+    call_sid = str(row.get("call_sid") or "").strip()
+    if call_sid and call_sid in outbound_sids:
+        return "outbound"
+    return "inbound"
+
+
+def _enrich_call_direction(rows: list[dict[str, Any]], outbound_sids: list[str]) -> list[dict[str, Any]]:
+    """Attach call_direction on each row for dashboard display."""
+    sid_set = set(outbound_sids)
+    for row in rows:
+        row["call_direction"] = _infer_call_direction(row, sid_set)
+    return rows
+
+
+def _apply_call_direction_filter(query: Any, call_direction: str | None, client: Any, outbound_sids: list[str]):
+    """Apply inbound/outbound filter to a Supabase query builder."""
+    direction = str(call_direction or "").strip().lower()
+    if direction not in ("inbound", "outbound"):
+        return query
+    if direction == "outbound":
+        clauses = ["metadata->>call_direction.eq.outbound"]
+        if outbound_sids:
+            sid_csv = ",".join(outbound_sids)
+            clauses.append(f"call_sid.in.({sid_csv})")
+        try:
+            return query.or_(",".join(clauses))
+        except Exception:
+            if outbound_sids:
+                return query.in_("call_sid", outbound_sids)
+            return query.eq("metadata->>call_direction", "outbound")
+    try:
+        query = query.neq("metadata->>call_direction", "outbound")
+    except Exception:
+        pass
+    if outbound_sids:
+        try:
+            query = query.not_.in_("call_sid", outbound_sids)
+        except Exception:
+            pass
+    return query
+
+
 def list_leads_sync(
     limit: int = 100,
     offset: int = 0,
@@ -1149,13 +1260,14 @@ def list_leads_sync(
     is_spam: bool | None = None,
     status: str | None = None,
     address: str | None = None,
+    call_direction: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     List leads from Supabase table, newest first, with optional filters.
     Only runs when CALL_RECORD_BACKEND=supabase and Supabase is configured.
     Returns (list of row dicts, total count). On error returns ([], 0).
     Order: created_at desc if column exists, else timestamp desc.
-    Filters: priority, date_from/date_to (interpreted in Config.TIMEZONE -> UTC), has_booking, has_address, is_spam (lead_status=spam), status (lead_status), address (general search).
+    Filters: priority, date_from/date_to (interpreted in Config.TIMEZONE -> UTC), has_booking, has_address, is_spam (lead_status=spam), status (lead_status), address (general search), call_direction (inbound|outbound).
     """
     backend = (Config.LEAD_BACKEND or "webhook").strip().lower()
     if backend != "supabase":
@@ -1172,69 +1284,73 @@ def list_leads_sync(
     from_iso, to_iso = _date_range_to_utc_iso(date_from, date_to)
     # Use only UTC bounds from parser; never pass raw date strings to DB (created_at is timestamptz/UTC).
 
-    def _run_query(order_col: str):
-        query = (
-            client.table(table)
-            .select("*", count="exact")
-            .order(order_col, desc=True)
-        )
-        if priority and str(priority).strip():
-            query = query.eq("priority", str(priority).strip())
-        if from_iso:
-            query = query.gte(order_col, from_iso)
-        if to_iso:
-            query = query.lte(order_col, to_iso)
-        if has_booking is True:
-            try:
-                query = query.not_.is_("confirmed_slot", "null")
-            except AttributeError:
-                pass
-        if has_address is True:
-            try:
-                query = query.not_.is_("service_address", "null").neq("service_address", "")
-            except AttributeError:
-                try:
-                    query = query.not_.is_("service_address", "null")
-                except AttributeError:
-                    pass
-        if is_spam is True:
-            try:
-                query = query.eq("lead_status", "spam")
-            except Exception:
-                pass
-        if status and str(status).strip():
-            query = query.eq("lead_status", str(status).strip().lower())
-        if address and str(address).strip():
-            term = str(address).strip()
-            pattern = "%" + term + "%"
-            # General address search: match term in service_address, issue_summary, or call_summary
-            try:
-                or_filter = (
-                    f"service_address.ilike.{pattern},"
-                    f"issue_summary.ilike.{pattern},"
-                    f"call_summary.ilike.{pattern}"
-                )
-                query = query.or_(or_filter)
-            except Exception:
-                try:
-                    query = query.ilike("service_address", pattern)
-                except Exception:
-                    pass
-        return query.range(offset, offset + limit - 1).execute()
-
     try:
         client = create_client(Config.SUPABASE_URL.strip(), Config.SUPABASE_KEY.strip())
+        outbound_sids = _get_outbound_call_sids_sync(client) if str(call_direction or "").strip().lower() in ("inbound", "outbound") else []
+
+        def _run_query(order_col: str):
+            query = (
+                client.table(table)
+                .select("*", count="exact")
+                .order(order_col, desc=True)
+            )
+            if priority and str(priority).strip():
+                query = query.eq("priority", str(priority).strip())
+            if from_iso:
+                query = query.gte(order_col, from_iso)
+            if to_iso:
+                query = query.lte(order_col, to_iso)
+            if has_booking is True:
+                try:
+                    query = query.not_.is_("confirmed_slot", "null")
+                except AttributeError:
+                    pass
+            if has_address is True:
+                try:
+                    query = query.not_.is_("service_address", "null").neq("service_address", "")
+                except AttributeError:
+                    try:
+                        query = query.not_.is_("service_address", "null")
+                    except AttributeError:
+                        pass
+            if is_spam is True:
+                try:
+                    query = query.eq("lead_status", "spam")
+                except Exception:
+                    pass
+            if status and str(status).strip():
+                query = query.eq("lead_status", str(status).strip().lower())
+            if address and str(address).strip():
+                term = str(address).strip()
+                pattern = "%" + term + "%"
+                try:
+                    or_filter = (
+                        f"service_address.ilike.{pattern},"
+                        f"issue_summary.ilike.{pattern},"
+                        f"call_summary.ilike.{pattern}"
+                    )
+                    query = query.or_(or_filter)
+                except Exception:
+                    try:
+                        query = query.ilike("service_address", pattern)
+                    except Exception:
+                        pass
+            query = _apply_call_direction_filter(query, call_direction, client, outbound_sids)
+            return query.range(offset, offset + limit - 1).execute()
+
         try:
             response = _run_query("created_at")
         except Exception as e:
             err_msg = str(e) if e else ""
-            # Column created_at may not exist; fall back to timestamp (handoff payload field)
             if "created_at" in err_msg and ("does not exist" in err_msg or "42703" in err_msg):
                 response = _run_query("timestamp")
             else:
                 raise
         rows = response.data if hasattr(response, "data") else []
         rows = list(rows) if isinstance(rows, list) else []
+        if rows:
+            display_sids = outbound_sids or _get_outbound_call_sids_sync(client)
+            _enrich_call_direction(rows, display_sids)
         total = getattr(response, "count", None)
         if total is None:
             total = len(rows)

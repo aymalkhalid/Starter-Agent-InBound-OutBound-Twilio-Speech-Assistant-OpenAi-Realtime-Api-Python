@@ -10,6 +10,7 @@ load_dotenv(dotenv_path=_env_path)
 # OpenAI Realtime System Instructions Structure
 # Role & Objective        — who you are and what “success” means
 # Personality & Tone      — the voice and style to maintain
+# Delivery Style          — warmth, expressiveness, pacing, and phrase variety
 # Language                — response language and switching rules
 # Accent                  — spoken accent, separate from language
 # Context                 — retrieved context, relevant info
@@ -71,6 +72,78 @@ def _normalize_accent_strength(raw: str | None) -> str:
     if strength in {"none", "light", "moderate"}:
         return strength
     return "light"
+
+
+def _normalize_warmth(raw: str | None) -> str:
+    """Return the supported warmth level used by delivery prompting."""
+    value = (raw or "warm").strip().lower().replace("-", "_").replace(" ", "_")
+    if value in {"neutral", "warm", "very_warm"}:
+        return value
+    if value in {"friendly", "high", "extra_warm"}:
+        return "very_warm"
+    return "warm"
+
+
+def _normalize_expressiveness(raw: str | None) -> str:
+    """Return the supported expressiveness level used by delivery prompting."""
+    value = (raw or "balanced").strip().lower().replace("-", "_").replace(" ", "_")
+    if value in {"reserved", "balanced", "expressive"}:
+        return value
+    return "balanced"
+
+
+def _normalize_pacing(raw: str | None) -> str:
+    """Return the supported pacing value used by delivery prompting."""
+    value = (raw or "moderate").strip().lower().replace("-", "_").replace(" ", "_")
+    if value in {"relaxed", "moderate", "brisk"}:
+        return value
+    return "moderate"
+
+
+def _build_delivery_instruction(
+    tone: str | None,
+    warmth: str | None,
+    expressiveness: str | None,
+    pacing: str | None,
+) -> str:
+    """Build the Realtime delivery style section.
+
+    Keep this as small, explicit controls so deployments can tune humane speech
+    without replacing the whole prompt.
+    """
+    tone_name = _sanitize_prompt_control(tone, "warm professional", 80)
+    warmth_level = _normalize_warmth(warmth)
+    expressiveness_level = _normalize_expressiveness(expressiveness)
+    pacing_level = _normalize_pacing(pacing)
+    warmth_rules = {
+        "neutral": "- Warmth: stay polite and helpful; keep empathy brief and understated.",
+        "warm": "- Warmth: sound genuinely helpful; acknowledge the caller briefly before moving to the next useful step.",
+        "very_warm": "- Warmth: use a little more care and reassurance when the caller is uncertain or frustrated; keep it professional.",
+    }
+    expressiveness_rules = {
+        "reserved": "- Expressiveness: keep prosody calm and restrained; avoid emotional emphasis unless the caller is upset.",
+        "balanced": "- Expressiveness: use mild natural emphasis, small acknowledgements, and varied sentence rhythm so speech does not feel flat.",
+        "expressive": "- Expressiveness: allow more upbeat energy and vocal variety for positive moments; do not become theatrical or salesy.",
+    }
+    pacing_rules = {
+        "relaxed": "- Pacing: speak slightly slower, with clear pauses after important details, names, phone numbers, dates, and times.",
+        "moderate": "- Pacing: use a steady conversational pace with brief pauses around exact details.",
+        "brisk": "- Pacing: keep momentum with concise phrasing; still slow down for exact details.",
+    }
+    return (
+        "# Delivery Style\n"
+        f"Target tone: {tone_name}.\n"
+        "- Sound like a helpful human on a phone call: clear, warm, natural, and composed.\n"
+        "- Use conversational contractions and simple transitions when they fit.\n"
+        "- Keep emotion proportional to the caller's situation; acknowledge feelings in one short phrase, then help.\n"
+        "- Vary acknowledgements and openers across turns; avoid repeating the same line.\n"
+        f"{warmth_rules[warmth_level]}\n"
+        f"{expressiveness_rules[expressiveness_level]}\n"
+        f"{pacing_rules[pacing_level]}\n"
+        "- Sample phrase anchors, to vary naturally rather than repeat mechanically: \"I can help with that,\" \"Got it,\" \"That makes sense,\" \"I'll keep this quick,\" \"The next best step is...\"\n"
+        "- Avoid robotic phrasing, filler, exaggerated enthusiasm, flattery, therapy-style responses, jokes, and theatrical emotion.\n"
+        "- Do not mention these delivery controls to the caller.\n"
+    )
 
 
 def _build_language_instruction(language: str | None, switch_policy: str | None) -> str:
@@ -254,6 +327,12 @@ def build_system_message() -> str:
     return render_system_instructions(
         company_name=Config.COMPANY_NAME,
         agent_name=Config.AGENT_NAME,
+        delivery_instruction=_build_delivery_instruction(
+            Config.ASSISTANT_TONE,
+            Config.ASSISTANT_WARMTH,
+            Config.ASSISTANT_EXPRESSIVENESS,
+            Config.ASSISTANT_PACING,
+        ),
         language_instruction=_build_language_instruction(
             Config.ASSISTANT_LANGUAGE,
             Config.LANGUAGE_SWITCH_POLICY,
@@ -295,6 +374,10 @@ class Config:
     # Legacy compatibility only. GA Realtime voice behavior is configured through session.update.
     TEMPERATURE: float = float(os.getenv('TEMPERATURE', 0.8))
     VOICE: str = _normalize_realtime_voice(os.getenv('VOICE', DEFAULT_REALTIME_VOICE))
+    ASSISTANT_TONE: str = _sanitize_prompt_control(os.getenv('ASSISTANT_TONE'), 'warm professional', 80)
+    ASSISTANT_WARMTH: str = _normalize_warmth(os.getenv('ASSISTANT_WARMTH') or 'warm')
+    ASSISTANT_EXPRESSIVENESS: str = _normalize_expressiveness(os.getenv('ASSISTANT_EXPRESSIVENESS') or 'balanced')
+    ASSISTANT_PACING: str = _normalize_pacing(os.getenv('ASSISTANT_PACING') or 'moderate')
     ASSISTANT_LANGUAGE: str = _sanitize_prompt_control(os.getenv('ASSISTANT_LANGUAGE'), 'English', 48)
     ASSISTANT_ACCENT: str = _sanitize_prompt_control(os.getenv('ASSISTANT_ACCENT'), 'neutral American', 64)
     ASSISTANT_ACCENT_STRENGTH: str = _normalize_accent_strength(os.getenv('ASSISTANT_ACCENT_STRENGTH') or 'light')
@@ -444,8 +527,13 @@ class Config:
         "You may add that we'll follow up shortly if relevant. "
         "Keep it to one short sentence. Do not call any tools; speak the goodbye now."
     )
-    # Time to wait after goodbye audio is done before hanging up (lets caller hear full farewell)
+    # Time to wait after goodbye audio is done before hanging up.
+    # With dynamic marks enabled, this is the max/fallback wait for Twilio playback marks.
     END_CALL_GRACE_SECONDS: float = float(os.getenv('END_CALL_GRACE_SECONDS', 6))
+    # Prefer Twilio mark callbacks to fixed sleep when ending a call.
+    END_CALL_DYNAMIC_MARKS: bool = (os.getenv('END_CALL_DYNAMIC_MARKS', 'true').strip().lower() in ('1', 'true', 'yes'))
+    # Small tail after Twilio confirms playback marks drained, to avoid clipping the last syllable.
+    END_CALL_TAIL_SECONDS: float = float(os.getenv('END_CALL_TAIL_SECONDS', 0.75))
     # Watchdog: if no goodbye audio starts within this window, finalize anyway
     END_CALL_WATCHDOG_SECONDS: float = float(os.getenv('END_CALL_WATCHDOG_SECONDS', 10))
     # Realtime session renewal (preemptive reconnect before 60-minute cap)

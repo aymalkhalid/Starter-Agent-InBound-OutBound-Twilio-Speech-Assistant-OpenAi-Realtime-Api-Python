@@ -205,7 +205,7 @@ flowchart LR
     H["dynamic_settings (Supabase app_settings)"] -.->|per-call overrides| B
 ```
 
-Injected placeholders include: `{agent_name}`, `{company_name}`, `{language_instruction}`, `{accent_instruction}`, `{reasoning_effort_instruction}`, `{tools_availability_instruction}`, `{call_record_instruction}`, `{booking_instruction}`, `{transfer_instruction}`.
+Injected placeholders include: `{agent_name}`, `{company_name}`, `{delivery_instruction}`, `{language_instruction}`, `{accent_instruction}`, `{reasoning_effort_instruction}`, `{tools_availability_instruction}`, `{call_record_instruction}`, `{booking_instruction}`, `{transfer_instruction}`.
 
 For `gpt-realtime-2`, `REALTIME_REASONING_EFFORT` is set on the session payload.
 
@@ -271,6 +271,17 @@ sequenceDiagram
 ---
 
 ## 7. Call record storage
+
+The app treats a call record as the customer/business outcome row. `call_sid`
+stores the latest/current Twilio call for update lookups. Lifecycle metadata can
+also carry:
+
+- `primary_call_sid`: original/canonical Twilio call for the record.
+- `related_call_sids`: all Twilio calls tied to the same record.
+- `appointments`, `booking_event_id`, and `last_booking_action` when booking tools are used.
+
+The dashboard collapses these into one `Call SID` row. It shows an expandable
+related-call history only when more than one SID exists.
 
 ```mermaid
 flowchart LR
@@ -436,20 +447,21 @@ sequenceDiagram
     participant ST as ConnectionState
 
     Note over AI,ST: New booking path
-    AI->>OS: get_availability(days_ahead, for_date?)
+    AI->>OS: get_availability(days_ahead, for_date?, caller_timezone?)
     OS->>GBS: booking_get_availability (thread pool)
     GBS->>GCal: freeBusy + slot generation
     GCal-->>GBS: busy times
-    GBS-->>OS: by_day + slots_flat (ISO start per slot)
+    GBS-->>OS: by_day + slots_flat (ISO start + appointment/caller displays)
     OS-->>AI: Tool result with display + ISO times
 
     AI->>OS: book_appointment(slot_start_iso, contact_*)
     OS->>GBS: booking_book_appointment
-    GBS->>GCal: create event (caller_phone in extendedProperties)
+    GBS->>GCal: create event (appointment timezone + caller timezone metadata)
     GBS->>GBS: invalidate_availability_cache()
-    GBS-->>OS: success + confirmed_slot + event_id
-    OS->>ST: appointment_booked, confirmed_slot_display
-    OS->>CRS: sync_call_record_after_booking_action_async (if call_sid)
+    GBS-->>OS: success + confirmed_slot + event_id + calendar_event_link
+    OS->>ST: appointment_booked + pending_booking_context
+    OS->>CRS: sync_call_record_after_booking_action_async (if row exists)
+    OS->>CRS: later save_call_record carries confirmed_slot + calendar_event_link if row did not exist yet
     OS-->>AI: Booking confirmation message
 
     Note over AI,ST: Manage existing booking
@@ -469,6 +481,11 @@ sequenceDiagram
         OS->>CRS: sync cancelled call record
     end
 ```
+
+Timezone behavior: `Config.TIMEZONE` is the appointment authority. Caller
+timezone is display context only and should be spoken caller-local first when it
+differs from clinic time. Dashboard Booking rows render from `confirmed_slot`,
+`calendar_event_link`, and `metadata.appointments[]`.
 
 **Cache:** `prewarm_availability_cache()` runs on stream start; mutations invalidate cache so the next `get_availability` reflects updated busy times.
 
@@ -636,6 +653,17 @@ flowchart TD
 
 Post-call transcription uses **faster-whisper**; optional OpenAI chat enhancement formats dialogue and adds summary/issues.
 
+Current storage behavior:
+
+- `transcript`: plain Whisper text after Generate Transcript; enhanced dialogue text after Enhance Transcript.
+- `transcript_summary`: post-call summary produced by the enhancement step.
+- `transcript_issues`: important details produced by the enhancement step.
+- `transcript_enhanced_at`: set when manual or automatic enhancement succeeds.
+
+`issue_summary` and `call_summary` are separate live-call summaries written by
+the Realtime agent through `save_call_record`; they are not generated from the
+recording transcript.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -753,7 +781,7 @@ flowchart TD
     LOAD["load_overrides_sync()"]
     APPLY["apply_overrides_to_config()"]
     CFG["Config.* attributes"]
-    REBUILD["rebuild_system_message()<br/>(if language/accent/company/booking flags changed)"]
+    REBUILD["rebuild_system_message()<br/>(if tone/language/accent/company/booking flags changed)"]
     SESSION["OpenAISessionManager.create_session_update()"]
     CALL["Each inbound call<br/>handle_media_stream on connect"]
 
@@ -776,7 +804,7 @@ flowchart TD
 | Category | Example keys |
 | --- | --- |
 | Voice / model | `VOICE`, `OPENAI_REALTIME_MODEL`, `REALTIME_REASONING_EFFORT` |
-| Language / accent | `ASSISTANT_LANGUAGE`, `ASSISTANT_ACCENT`, `LANGUAGE_SWITCH_POLICY` |
+| Tone / language / accent | `ASSISTANT_TONE`, `ASSISTANT_WARMTH`, `ASSISTANT_EXPRESSIVENESS`, `ASSISTANT_PACING`, `ASSISTANT_LANGUAGE`, `ASSISTANT_ACCENT`, `LANGUAGE_SWITCH_POLICY` |
 | VAD | `VAD_MODE`, `VAD_THRESHOLD`, `VAD_DEBOUNCE_AFTER_OUTGOING_MS`, `VAD_INTERRUPTION_CONFIRM_MS` |
 | Booking | `BOOKING_ENABLED`, `BOOKING_DAYS_ENABLED`, `GOOGLE_CALENDAR_ID`, slot hours |
 | Ops | `CALL_RECORDING_ENABLED`, `TRANSCRIPTION_MODEL`, `HUMAN_TRANSFER_ENABLED` |
@@ -813,10 +841,15 @@ stateDiagram-v2
         response metadata/item fallback
     end note
 
-    Finalizing --> GraceSleep: finalize_goodbye()
-    GraceSleep --> Hangup: END_CALL_GRACE_SECONDS (default 6s)
+    Finalizing --> PlaybackWait: finalize_goodbye()
+    PlaybackWait --> Hangup: Twilio marks drained + END_CALL_TAIL_SECONDS
+    PlaybackWait --> Hangup: END_CALL_GRACE_SECONDS fallback/max
     Hangup --> [*]: Twilio REST completed + close Twilio WS
 ```
+
+When `END_CALL_DYNAMIC_MARKS=true`, goodbye finalization waits for Twilio
+playback marks from the final audio before hanging up. `END_CALL_GRACE_SECONDS`
+remains the fallback/max wait if marks are delayed or unavailable.
 
 ### Context-aware farewell text
 
@@ -872,7 +905,7 @@ flowchart LR
 | Goal | Edit first |
 | --- | --- |
 | Agent behavior / conversation rules | `prompts/main_system_instructions.md` |
-| Language, accent, reasoning effort | `.env` or dashboard Settings (`dynamic_settings`) |
+| Tone, language, accent, reasoning effort | `.env` or dashboard Settings (`dynamic_settings`) |
 | Tool availability text in prompt | `config.py` builders (driven by env flags) |
 | Tool schemas + side effects | `services/openai_service.py` |
 | Greeting / farewell phrasing | `system_instructions.py` |

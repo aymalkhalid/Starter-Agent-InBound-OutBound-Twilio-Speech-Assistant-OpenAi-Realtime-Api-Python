@@ -19,7 +19,7 @@ Do not add industry YAML files, prompt-profile tables, prompt-version tables, or
 1. Create a client project from the starter, or make changes in the client repo.
 2. Fill `docs/templates/CLIENT_DISCOVERY.md` for the target industry/client.
 3. Ask the coding agent to update `prompts/main_system_instructions.md` first.
-4. Change `.env` or dashboard Settings for voice, language, accent, model, VAD, booking, transfer, and recording.
+4. Change `.env` or dashboard Settings for tone, voice, language, accent, model, VAD, booking, transfer, and recording.
 5. Change tool schemas/handlers only when the prompt cannot express the required side effect.
 6. Preview the rendered prompt:
 
@@ -63,6 +63,6 @@ These are prompt-edit directions for a coding agent, not runtime profile files.
 
 ## Supabase boundary
 
-Supabase `app_settings` is for operational knobs that are safe to change without code review: voice, language, accent, VAD, model choice, booking settings, transfer toggles, recording, and dashboard-related settings.
+Supabase `app_settings` is for operational knobs that are safe to change without code review: tone, voice, language, accent, VAD, model choice, booking settings, transfer toggles, recording, and dashboard-related settings.
 
 Do not store the main prompt, full system instructions, industry templates, or tool policy in Supabase for this starter. That keeps Realtime behavior predictable, testable, and easy to review in git.

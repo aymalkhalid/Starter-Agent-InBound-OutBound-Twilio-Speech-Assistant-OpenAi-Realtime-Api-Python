@@ -7,6 +7,16 @@ from __future__ import annotations
 
 
 DEFAULT_CAMPAIGN_TYPES = {
+    "aesthetic_appointment_setter": {
+        "label": "Aesthetic Appointment Setter",
+        "system_instructions_path": "prompts/aesthetic_appointment_setter.md",
+        "default_script": "",
+        "custom_fields": [
+            {"name": "lead_offer", "label": "Lead Offer / Latest Opt-In", "required": False},
+            {"name": "contact_timezone", "label": "Contact Timezone", "required": False},
+            {"name": "callback_number", "label": "Callback Number", "required": False},
+        ],
+    },
     "promo": {
         "label": "Promotional",
         "default_script": """You are {agent_name}, calling on behalf of {company_name}. You are reaching out to {contact_name} about a special promotion.

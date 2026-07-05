@@ -81,7 +81,7 @@ Once `/media-stream` connects, inbound and outbound use the same runtime:
 
 | Supabase table | Purpose |
 | --- | --- |
-| `call_records` (or `leads`) | Leads/call records from `save_call_record` tool + dashboard |
+| `call_records` (or `leads`) | CRM-style call records from `save_call_record`; `call_sid` stores the latest call and metadata tracks primary/related calls |
 | `app_settings` | Runtime overrides via `dynamic_settings.py` |
 | `outbound_campaigns` | Campaign definitions + scripts |
 | `outbound_contacts` | Contacts, dial status, `call_sid` |
@@ -125,7 +125,7 @@ Runs inside `OpenAIService.maybe_handle_tool_call()` via thread pool (`run_in_ex
 | **Dashboard** | Supabase + auth optional | `/dashboard`, `/calls`, `/outbound/*`, `/missed-calls`, `/settings`, SSE live updates |
 | **Human transfer** | `HUMAN_TRANSFER_ENABLED` | `request_human_handoff` → `/twiml/transfer-to-agent` |
 | **Recording** | `CALL_RECORDING_ENABLED` | Twilio recording → `/recording-status` → Supabase |
-| **Transcription** | `TRANSCRIPTION_MODEL` | faster-whisper + optional OpenAI enhance |
+| **Transcription** | `TRANSCRIPTION_MODEL` | faster-whisper transcript from recording + optional OpenAI enhancement summary/issues |
 | **MCP / tool registry** | Disabled scaffold | Future external tools via `tool_registry.py`, `mcp_adapter.py` |
 
 ### Step 8 — Environment cheat sheet
@@ -216,7 +216,7 @@ flowchart TB
     subgraph PROMPTS["📝 PROMPT PATHS (diverge here, merge at session.update)"]
         direction TB
         P_IN["INBOUND PROMPT<br/>main_system_instructions.md<br/>→ system_instructions.py<br/>→ config.py → Config.SYSTEM_MESSAGE<br/>+ dynamic_settings overrides"]
-        P_OUT["OUTBOUND PROMPT<br/>build_outbound_system_message()<br/>campaign message_template<br/>+ {contact_name} {company_name} placeholders<br/>+ language/accent policy"]
+        P_OUT["OUTBOUND PROMPT<br/>build_outbound_system_message()<br/>campaign message_template<br/>+ {contact_name} {company_name} placeholders<br/>+ delivery/language/accent policy"]
         P_GREET_IN["send_initial_greeting<br/>(full inbound welcome)"]
         P_GREET_OUT["send_initial_greeting(is_outbound=true)<br/>(minimal opener)"]
     end

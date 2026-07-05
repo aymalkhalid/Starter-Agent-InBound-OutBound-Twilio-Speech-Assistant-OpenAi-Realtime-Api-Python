@@ -14,7 +14,7 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | Role and Objective | `# Role and Objective` | Generic business voice agent scope |
 | Conversation Flow | `# Conversation Flow` | Lightweight intake; not a full state machine |
 | Reasoning | `# Reasoning`, `{reasoning_effort_instruction}` | OpenAI when/when-not rules; API effort injected for gpt-realtime-2 |
-| Personality and Tone | `# Personality and Tone` | Short phone-friendly style |
+| Personality and Tone | `# Personality and Tone`, `{delivery_instruction}` | Short phone-friendly style plus env-controlled tone, warmth, expressiveness, and pacing |
 | Language | `{language_instruction}` | English-primary by default; optional multilingual via `LANGUAGE_SWITCH_POLICY` |
 | Accent | `{accent_instruction}` | English delivery with configurable accent; separate from language |
 | Preambles | `# Preambles` | OpenAI-aligned when/when-not/style; mapped to slow tools |
@@ -24,6 +24,7 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | Entity Capture | `# Entity Capture` + collection order, spelled-out chars, spoken numbers, confirmation, workflow | Full OpenAI exact-entity pattern for phone, email, slots |
 | Instruction precision | `# Instruction Precision` | Avoid literal traps; scoped rules over broad must/always |
 | Tools | `# Tools`, `{tools_availability_instruction}`, dynamic blocks | Eagerness, read/write rules, failure recovery |
+| Booking timezones | `# Tools` → `## Booking timezones`; TVAAI `## Step 9: Offer Slots` and `## Step 12: Confirm and Close` | Appointment timezone is booking authority; when caller timezone differs, spoken offers/confirmations lead with caller-local time and then clinic/appointment time |
 | Escalation / Safety | `# Safety`, `# End Call` | Basic guardrails; expand for production |
 
 ## Implemented in code (not only prompt)
@@ -38,7 +39,10 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | Preamble sample phrases on slow tools | `services/openai_service.py` tool descriptions |
 | Structured tool validation failures | `OpenAIService._format_tool_failure_output()` JSON envelope |
 | Write-action confirmation | Prompt: confirm before side-effect tools |
+| Timezone-aware booking payloads | `services/google_calendar_booking_service.py`, `services/openai_service.py`; details in [Booking timezones](../BOOKING_TIMEZONES.md) |
+| Dashboard booking projection | `services/openai_service.py`, `services/webhook_service.py`, `static/dashboard.html` carry `confirmed_slot`, `calendar_event_link`, and `metadata.appointments[]` after successful booking |
 | Reasoning effort | `REALTIME_REASONING_EFFORT` in `config.py`; sent in session for `gpt-realtime-2`; mirrored in prompt |
+| Delivery controls | `ASSISTANT_TONE`, `ASSISTANT_WARMTH`, `ASSISTANT_EXPRESSIVENESS`, `ASSISTANT_PACING` in `config.py`; optional Supabase/dashboard overrides |
 
 ## Gaps to consider when extending
 
@@ -63,7 +67,7 @@ Both are copied in [openai-realtime-models-prompting.md](./openai-realtime-model
 1. Identify the behavior gap or new feature.
 2. Find the matching section in the [OpenAI guide](./openai-realtime-models-prompting.md).
 3. Update `prompts/main_system_instructions.md` first.
-4. Update `config.py` builders or `.env` when language, accent, reasoning effort, or feature toggles are involved.
+4. Update `config.py` builders or `.env` when tone, language, accent, reasoning effort, or feature toggles are involved.
 5. Update `services/openai_service.py` if tools or side effects change.
 6. Update [docs/CONFIGURATION.md](../CONFIGURATION.md) when placeholders or env vars change.
 7. Run `pytest tests/test_system_instructions.py` after prompt or config builder changes.

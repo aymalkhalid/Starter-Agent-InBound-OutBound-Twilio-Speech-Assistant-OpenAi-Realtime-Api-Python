@@ -4,12 +4,14 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 
 from fastapi.websockets import WebSocketDisconnect
 from starlette.requests import Request
 
 # Ensure project root is on path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = Path(__file__).resolve().parents[1]
 
 from config import Config
 from services.connection_manager import WebSocketConnectionManager
@@ -62,6 +64,47 @@ def test_outbound_twiml_uses_custom_parameters():
     assert 'name="direction" value="outbound"' in xml
     assert 'name="campaign_id" value="campaign-123"' in xml
     assert 'name="contact_id" value="contact-456"' in xml
+
+
+def test_create_outbound_call_rejects_twilio_number_as_destination(monkeypatch):
+    """The lead phone must not be the same number used as Twilio caller ID."""
+    monkeypatch.setattr(Config, "has_twilio_credentials", classmethod(lambda cls: True))
+    monkeypatch.setattr(Config, "get_outbound_from_number", classmethod(lambda cls: "+12185957805"))
+
+    try:
+        asyncio.run(
+            TwilioService.create_outbound_call(
+                to="(218) 595-7805",
+                twiml_url="https://voice.example.test/outbound-call-twiml/campaign-1",
+            )
+        )
+        raise AssertionError("Expected create_outbound_call to reject self-call")
+    except RuntimeError as exc:
+        assert "Outbound destination matches TWILIO_OUTBOUND_NUMBER" in str(exc)
+
+
+def test_recording_media_endpoint_supports_byte_ranges():
+    """Dashboard MP3 playback needs range responses for browser seeking."""
+    source = (ROOT / "main.py").read_text(encoding="utf-8")
+
+    assert "def _parse_http_range_header(" in source
+    assert "\"Accept-Ranges\": \"bytes\"" in source
+    assert "\"Content-Range\": f\"bytes {start}-{end}/{content_length}\"" in source
+    assert "status_code=206" in source
+    assert "status_code=416" in source
+
+
+def test_dashboard_recording_player_keeps_seek_state():
+    """Custom recording player should seek by seconds and not snap back while dragging."""
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+
+    assert "class=\\\"custom-audio-seek\\\" min=\\\"0\\\" max=\\\"0\\\" step=\\\"0.01\\\" value=\\\"0\\\" disabled" in html
+    assert "var isSeeking = false;" in html
+    assert "range.max = String(audio.duration);" in html
+    assert "if (syncRangeBounds() && !isSeeking) range.value = String(cur || 0);" in html
+    assert "audio.currentTime = target;" in html
+    assert "range.addEventListener(\"pointerdown\"" in html
+    assert "range.addEventListener(\"pointerup\"" in html
 
 
 class _FakeTwilioWebSocket:

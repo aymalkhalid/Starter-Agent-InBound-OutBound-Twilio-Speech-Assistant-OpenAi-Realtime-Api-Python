@@ -1,6 +1,7 @@
 """Focused tests for OpenAI service session payload and tool idempotency."""
 
 import asyncio
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
+from services.audio_service import AudioService
 from services.openai_service import OpenAISessionManager, OpenAIService
 import services.openai_service as openai_service_module
 import services.webhook_service as webhook_service_module
@@ -235,6 +237,149 @@ def test_submit_lead_validation_blocks_missing_required_fields():
     assert connection_manager.state.lead_submitted is False
 
 
+def test_call_record_tools_expose_outcome_tag(monkeypatch):
+    monkeypatch.setattr(openai_service_module, "has_call_record_backend_configured", lambda: True)
+    monkeypatch.setattr(openai_service_module, "is_booking_enabled", lambda: False)
+    monkeypatch.setattr(Config, "HUMAN_TRANSFER_ENABLED", True)
+    monkeypatch.setattr(Config, "HUMAN_TRANSFER_URL", "https://example.test/transfer")
+
+    tools = {tool["name"]: tool for tool in OpenAISessionManager._realtime_tools()}
+
+    save_outcome = tools["save_call_record"]["parameters"]["properties"]["outcome_tag"]
+    transfer_outcome = tools["request_human_handoff"]["parameters"]["properties"]["outcome_tag"]
+    assert "booked" in save_outcome["enum"]
+    assert "interested-callback" in save_outcome["enum"]
+    assert "transfer-needed" in transfer_outcome["enum"]
+
+
+def test_save_call_record_outcome_tag_is_normalized_and_forwarded(monkeypatch):
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_outcome_1")
+    connection_manager.state.caller_phone_number = "+15551234567"
+    captured_payloads = []
+
+    async def _fake_save_call_record_async(payload):
+        captured_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(
+        call_records_service_module,
+        "save_call_record_async",
+        _fake_save_call_record_async,
+    )
+
+    tool_call = {
+        "name": "save_call_record",
+        "arguments": {
+            "contact_name": "Avery",
+            "contact_phone": "caller's number",
+            "issue_summary": "Wrinkle Reset callback request",
+            "priority": "normal",
+            "call_summary": "Caller is interested in Wrinkle Reset but asked for a callback tomorrow.",
+            "outcome_tag": "interested_callback",
+        },
+        "call_id": "call_save_outcome_1",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, tool_call) is True
+        await _drain_background_tasks()
+
+    asyncio.run(_run())
+    assert len(captured_payloads) == 1
+    payload = captured_payloads[0]
+    assert payload["outcome_tag"] == "interested-callback"
+    assert payload["metadata"]["appointment_setter"]["outcome_tag"] == "interested-callback"
+    assert payload["metadata"]["call_direction"] == "inbound"
+    assert payload["contact"]["phone"] == "+15551234567"
+
+
+def test_booking_error_record_is_suppressed_after_confirmed_booking(monkeypatch):
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_booked_then_error")
+    connection_manager.state.caller_phone_number = "+12185953862"
+    connection_manager.state.appointment_booked = True
+    connection_manager.state.confirmed_slot_display = "Monday, July 06 at 09:00 AM Pacific Time"
+    captured_payloads = []
+
+    async def _fake_save_call_record_async(payload):
+        captured_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(
+        call_records_service_module,
+        "save_call_record_async",
+        _fake_save_call_record_async,
+    )
+
+    tool_call = {
+        "name": "save_call_record",
+        "arguments": {
+            "contact_name": "Aymal",
+            "contact_phone": "caller's number",
+            "issue_summary": "Wrinkle Reset consultation booking",
+            "priority": "routine",
+            "call_summary": "Model thought booking did not complete after the calendar event was already created.",
+            "outcome_tag": "booking-error",
+        },
+        "call_id": "call_false_booking_error",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, tool_call) is True
+        await _drain_background_tasks()
+
+    asyncio.run(_run())
+
+    assert captured_payloads == []
+    outputs = _tool_outputs(connection_manager)
+    assert outputs
+    result = json.loads(outputs[0])
+    assert result["success"] is True
+    assert "Do not save a booking-error" in result["message"]
+    assert result["confirmed_slot_display"] == "Monday, July 06 at 09:00 AM Pacific Time"
+
+
+def test_build_call_record_metadata_tags_outbound_campaign():
+    from services.openai_service import _build_call_record_metadata
+
+    connection_manager = _DummyConnectionManager(call_sid="CA_outbound_meta")
+    connection_manager.state.is_outbound_call = True
+    connection_manager.state.outbound_campaign_id = "campaign-1"
+    connection_manager.state.outbound_contact_id = "contact-1"
+
+    metadata = _build_call_record_metadata(connection_manager)
+
+    assert metadata == {
+        "call_direction": "outbound",
+        "outbound_campaign_id": "campaign-1",
+        "outbound_contact_id": "contact-1",
+    }
+
+
+def test_invalid_outcome_tag_is_rejected_before_side_effects():
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_invalid_outcome")
+    connection_manager.state.caller_phone_number = "+15551234567"
+
+    ok, normalized, error = service._normalize_and_validate_tool_args(
+        "save_call_record",
+        {
+            "contact_name": "Avery",
+            "contact_phone": "caller's number",
+            "issue_summary": "Appointment call",
+            "priority": "normal",
+            "call_summary": "Caller discussed an appointment.",
+            "outcome_tag": "maybe-later",
+        },
+        connection_manager,
+    )
+
+    assert ok is False
+    assert normalized["contact_phone"] == "+15551234567"
+    assert "Invalid outcome_tag" in (error or "")
+
+
 def test_get_availability_validation_rejects_invalid_for_date():
     """for_date must be YYYY-MM-DD when provided."""
     service = OpenAIService()
@@ -259,7 +404,7 @@ def test_get_availability_reports_closed_weekday(monkeypatch):
     service = OpenAIService()
     connection_manager = _DummyConnectionManager(call_sid=None)
 
-    def _fake_booking_get_availability(*, days_ahead=7, for_date=None):
+    def _fake_booking_get_availability(*, days_ahead=7, for_date=None, **kwargs):
         assert days_ahead == 7
         assert for_date == "2026-04-26"
         return {
@@ -726,6 +871,32 @@ def test_goodbye_completion_watchdog_finalizes_after_audio_started(monkeypatch):
     assert connection_manager.close_twilio_calls == [{"code": 1000, "reason": "assistant completed"}]
 
 
+def test_goodbye_finalizer_waits_for_twilio_playback_marks(monkeypatch):
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_end")
+    audio_service = AudioService()
+    audio_service.create_mark_message("MZ_end", mark_name="goodbye-final")
+
+    monkeypatch.setattr(Config, "END_CALL_DYNAMIC_MARKS", True)
+    monkeypatch.setattr(Config, "END_CALL_GRACE_SECONDS", 1)
+    monkeypatch.setattr(Config, "END_CALL_TAIL_SECONDS", 0)
+    monkeypatch.setattr(Config, "TWILIO_ACCOUNT_SID", None)
+    monkeypatch.setattr(Config, "TWILIO_AUTH_TOKEN", None)
+
+    async def _run():
+        task = asyncio.create_task(service.finalize_goodbye(connection_manager, audio_service))
+        await asyncio.sleep(0.01)
+        assert connection_manager.marked_twilio_closed is False
+        assert audio_service.pending_mark_count() == 1
+        audio_service.handle_mark_event()
+        await task
+
+    asyncio.run(_run())
+    assert audio_service.pending_mark_count() == 0
+    assert connection_manager.marked_twilio_closed is True
+    assert connection_manager.close_twilio_calls == [{"code": 1000, "reason": "assistant completed"}]
+
+
 def test_booking_tool_descriptions_require_exact_booking_confirmation(monkeypatch):
     monkeypatch.setattr(openai_service_module, "is_booking_enabled", lambda: True)
     tools = OpenAISessionManager._realtime_tools()
@@ -737,14 +908,23 @@ def test_booking_tool_descriptions_require_exact_booking_confirmation(monkeypatc
     assert "Only call this after the caller has confirmed the exact booking" in by_name["delete_booking"]["description"]
     assert "Only call this after the caller has confirmed the exact booking" in by_name["edit_booking"]["description"]
     assert "Do not say the appointment is booked until this tool succeeds" in by_name["book_appointment"]["description"]
+    assert "deposit, schedule-protection, policy, or payment-link consent" in by_name["book_appointment"]["description"]
+    assert "required consent is explicit" in by_name["book_appointment"]["description"]
     assert "Do not say the appointment was cancelled until this tool succeeds" in by_name["delete_booking"]["description"]
     assert "Do not say the appointment was rescheduled until this tool succeeds" in by_name["edit_booking"]["description"]
+    assert "caller_timezone" in by_name["get_availability"]["parameters"]["properties"]
+    assert "caller_timezone" in by_name["book_appointment"]["parameters"]["properties"]
+    assert "caller_timezone" in by_name["edit_booking"]["parameters"]["properties"]
+    assert "offer caller-local time first" in by_name["get_availability"]["description"]
+    assert "caller-local time first" in by_name["book_appointment"]["description"]
+    assert "never call the clinic timezone 'my time'" in by_name["book_appointment"]["description"]
 
 
 def test_book_appointment_writes_on_first_call_without_confirm_flag(monkeypatch):
     """Single book_appointment call should write to calendar (no server-side staging)."""
     service = OpenAIService()
     connection_manager = _DummyConnectionManager(call_sid=None)
+    connection_manager.state.outbound_contact_timezone = "America/Chicago"
     calls = []
 
     def _fake_booking_book_appointment(**kwargs):
@@ -777,9 +957,66 @@ def test_book_appointment_writes_on_first_call_without_confirm_flag(monkeypatch)
     asyncio.run(_run())
     assert len(calls) == 1
     assert calls[0]["slot_start_iso"] == "2026-04-17T15:00:00Z"
+    assert calls[0]["caller_timezone"] == "America/Chicago"
+    assert calls[0]["caller_timezone_source"] == "lead"
     assert connection_manager.state.appointment_booked is True
     outputs = _tool_outputs(connection_manager)
     assert any("Booked OK" in o for o in outputs)
+
+
+def test_get_availability_uses_outbound_lead_timezone(monkeypatch):
+    """Outbound contact timezone flows into availability calls as caller context."""
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid=None)
+    connection_manager.state.caller_phone_number = "+12185953862"
+    connection_manager.state.outbound_contact_timezone = "America/Chicago"
+    calls = []
+
+    def _fake_booking_get_availability(**kwargs):
+        calls.append(kwargs)
+        slot = {
+            "start": "2099-01-05T17:00:00Z",
+            "end": "2099-01-05T18:00:00Z",
+            "display": "Mon Jan 05 at 09:00 AM Pacific Time",
+            "caller_display": "Mon Jan 05 at 11:00 AM Central Time",
+        }
+        return {
+            "by_day": {"2099-01-05": {"date_display": "Mon, Jan 05", "morning": [slot], "afternoon": [], "evening": []}},
+            "slots_flat": [slot],
+        }
+
+    monkeypatch.setattr(openai_service_module, "booking_get_availability", _fake_booking_get_availability)
+    monkeypatch.setattr(openai_service_module.asyncio, "get_event_loop", lambda: _ImmediateExecutorLoop())
+
+    tool_call = {
+        "name": "get_availability",
+        "arguments": {"for_date": "2099-01-05"},
+        "call_id": "call_availability_tz",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, tool_call) is True
+
+    asyncio.run(_run())
+    assert calls[0]["caller_timezone"] == "America/Chicago"
+    assert calls[0]["caller_timezone_source"] == "lead"
+    outputs = _tool_outputs(connection_manager)
+    assert any("caller local: Mon Jan 05 at 11:00 AM Central Time" in o for o in outputs)
+
+
+def test_booking_timezone_context_prefers_outbound_lead_timezone():
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid=None)
+    connection_manager.state.outbound_contact_timezone = "America/Chicago"
+
+    tz_name, source = service._booking_timezone_context(
+        connection_manager,
+        explicit_timezone="America/New_York",
+        contact_phone="+12185953862",
+    )
+
+    assert tz_name == "America/Chicago"
+    assert source == "lead"
 
 
 def test_book_appointment_optional_confirm_exact_slot_still_writes(monkeypatch):
@@ -928,6 +1165,88 @@ def test_book_appointment_success_syncs_business_record(monkeypatch):
             "appointment_summary": "Deep cleaning appointment",
         }
     ]
+
+
+def test_save_call_record_after_booking_carries_calendar_link_when_sync_misses(monkeypatch):
+    """If booking happens before the row exists, the later save must insert booking fields."""
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid="CA_booking_then_save")
+    captured_payloads = []
+
+    def _fake_booking_book_appointment(**kwargs):
+        return {
+            "success": True,
+            "message": "Booked OK",
+            "event_id": "evt_after_insert",
+            "confirmed_slot": {
+                "display": "Monday, July 06 at 09:00 AM Pacific Time",
+                "caller_display": "Monday, July 06 at 12:00 PM Eastern Time",
+                "start": "2026-07-06T16:00:00Z",
+            },
+            "calendar_event_link": "https://calendar.google.com/event?eid=evt_after_insert",
+        }
+
+    async def _fake_sync_call_record_after_booking_action_async(**kwargs):
+        return None
+
+    async def _fake_save_call_record_async(payload):
+        captured_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(openai_service_module, "booking_book_appointment", _fake_booking_book_appointment)
+    monkeypatch.setattr(openai_service_module.asyncio, "get_event_loop", lambda: _ImmediateExecutorLoop())
+    monkeypatch.setattr(
+        call_records_service_module,
+        "sync_call_record_after_booking_action_async",
+        _fake_sync_call_record_after_booking_action_async,
+    )
+    monkeypatch.setattr(
+        call_records_service_module,
+        "save_call_record_async",
+        _fake_save_call_record_async,
+    )
+
+    book_call = {
+        "name": "book_appointment",
+        "arguments": {
+            "slot_start_iso": "2026-07-06T16:00:00Z",
+            "contact_name": "Aymal",
+            "contact_phone": "+12185953862",
+            "contact_email": "aymal@aigensols.com",
+            "summary": "Wrinkle Reset Membership consultation",
+        },
+        "call_id": "call_book_before_row",
+    }
+    save_call = {
+        "name": "save_call_record",
+        "arguments": {
+            "contact_name": "Aymal",
+            "contact_phone": "+12185953862",
+            "contact_email": "aymal@aigensols.com",
+            "issue_summary": "Booked Wrinkle Reset Membership consultation.",
+            "priority": "normal",
+            "call_summary": "Booking succeeded.",
+            "outcome_tag": "booked",
+        },
+        "call_id": "call_save_after_booking",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, book_call) is True
+        await _drain_background_tasks()
+        assert await service.maybe_handle_tool_call(connection_manager, save_call) is True
+        await _drain_background_tasks()
+
+    asyncio.run(_run())
+
+    assert len(captured_payloads) == 1
+    payload = captured_payloads[0]
+    assert payload["confirmed_slot"]["display"] == "Monday, July 06 at 09:00 AM Pacific Time"
+    assert payload["calendar_event_link"] == "https://calendar.google.com/event?eid=evt_after_insert"
+    assert payload["metadata"]["booking_event_id"] == "evt_after_insert"
+    appointments = payload["metadata"]["appointments"]
+    assert appointments[0]["event_id"] == "evt_after_insert"
+    assert appointments[0]["calendar_event_link"] == "https://calendar.google.com/event?eid=evt_after_insert"
 
 
 def test_delete_booking_success_clears_stored_booking_fields(monkeypatch):

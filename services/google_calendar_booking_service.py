@@ -23,10 +23,19 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from services.log_utils import Log
+from services.timezone_utils import (
+    format_local_time,
+    infer_timezone_from_phone,
+    normalize_timezone_name,
+    same_timezone,
+    timezone_label,
+)
 
-# Availability cache: key (days_ahead, for_date, booking_days_raw) -> (result_dict, expiry_ts). Thread-safe.
-_availability_cache: dict[tuple[int, str, str], tuple[dict[str, Any], float]] = {}
+# Availability cache: key (days_ahead, for_date, profile, caller profile) -> (result_dict, expiry_ts). Thread-safe.
+_availability_cache: dict[tuple[int, str, str, str], tuple[dict[str, Any], float]] = {}
 _availability_cache_lock = threading.Lock()
+_calendar_timezone_warning_keys: set[tuple[str, str, str]] = set()
+_calendar_timezone_cache: dict[str, str | None] = {}
 
 # In-process counters for ops / debugging (thread-safe). Not reset on deploy except process restart.
 _metrics_lock = threading.Lock()
@@ -173,6 +182,108 @@ def _effective_str_setting(name: str, default: str) -> str:
     return str(raw or default).strip()
 
 
+def _get_calendar_timezone(service=None, cal_id: str | None = None) -> str | None:
+    """Return the Google Calendar timezone when it can be read and validated."""
+    cal_key = str(cal_id or "").strip()
+    if not service or not cal_key:
+        return None
+    if cal_key in _calendar_timezone_cache:
+        return _calendar_timezone_cache[cal_key]
+    try:
+        metadata = service.calendars().get(calendarId=cal_key).execute()
+        tz_name = normalize_timezone_name((metadata or {}).get("timeZone"))
+    except Exception as e:
+        Log.info(f"Google Calendar timezone lookup skipped/failed: {e}")
+        tz_name = None
+    _calendar_timezone_cache[cal_key] = tz_name
+    return tz_name
+
+
+def _appointment_timezone(service=None, cal_id: str | None = None) -> str:
+    """
+    Effective appointment timezone.
+
+    Config.TIMEZONE is the authority. Google Calendar's timezone is only used as
+    a validation/fallback source if Config.TIMEZONE is invalid or empty.
+    """
+    configured_raw = _effective_str_setting("TIMEZONE", "America/Los_Angeles")
+    configured = normalize_timezone_name(configured_raw)
+    calendar_tz = _get_calendar_timezone(service, cal_id)
+    if configured:
+        if calendar_tz and calendar_tz != configured:
+            key = (str(cal_id or ""), configured, calendar_tz)
+            if key not in _calendar_timezone_warning_keys:
+                _calendar_timezone_warning_keys.add(key)
+                Log.event(
+                    "Google Calendar timezone differs from app TIMEZONE",
+                    {
+                        "app_timezone": configured,
+                        "google_calendar_timezone": calendar_tz,
+                        "calendar_id": cal_id,
+                        "effect": "Using app TIMEZONE for booking; Google Calendar UI may display converted times.",
+                    },
+                )
+        return configured
+    if calendar_tz:
+        Log.event(
+            "Using Google Calendar timezone fallback",
+            {"configured_timezone": configured_raw, "google_calendar_timezone": calendar_tz},
+        )
+        return calendar_tz
+    Log.event(
+        "Using default appointment timezone fallback",
+        {"configured_timezone": configured_raw, "default_timezone": "America/Los_Angeles"},
+    )
+    return "America/Los_Angeles"
+
+
+def _resolve_caller_timezone(
+    *,
+    caller_timezone: str | None = None,
+    caller_timezone_source: str | None = None,
+    caller_phone: str | None = None,
+) -> tuple[str | None, str]:
+    """Resolve caller timezone for display context only; never controls booking authority."""
+    explicit = normalize_timezone_name(caller_timezone)
+    if explicit:
+        source = str(caller_timezone_source or "").strip().lower()
+        if source not in {"lead", "explicit", "caller_id_hint"}:
+            source = "explicit"
+        return explicit, source
+    inferred = infer_timezone_from_phone(caller_phone)
+    if inferred:
+        return inferred, "caller_id_hint"
+    return None, "none"
+
+
+def _slot_payload(
+    *,
+    start_dt_utc: datetime,
+    end_dt_utc: datetime,
+    appointment_timezone: str,
+    caller_timezone: str | None,
+    caller_timezone_source: str,
+) -> dict[str, Any]:
+    """Build a backward-compatible slot dict with timezone-aware display fields."""
+    display = format_local_time(start_dt_utc, appointment_timezone, include_timezone=True)
+    payload: dict[str, Any] = {
+        "start": start_dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "end": end_dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "display": display,
+        "appointment_display": display,
+        "appointment_timezone": appointment_timezone,
+        "appointment_timezone_label": timezone_label(appointment_timezone),
+    }
+    if caller_timezone and not same_timezone(caller_timezone, appointment_timezone):
+        payload["caller_display"] = format_local_time(start_dt_utc, caller_timezone, include_timezone=True)
+        payload["caller_timezone"] = caller_timezone
+        payload["caller_timezone_source"] = caller_timezone_source
+    elif caller_timezone:
+        payload["caller_timezone"] = caller_timezone
+        payload["caller_timezone_source"] = caller_timezone_source
+    return payload
+
+
 def _slot_duration_minutes() -> int:
     """Appointment length in minutes. Minimum 1 to avoid zero step and division by zero."""
     return _effective_int_setting("BOOKING_SLOT_DURATION_MINUTES", 60, minimum=1)
@@ -305,6 +416,9 @@ def _build_booking_calendar_description(
     duration_minutes: int,
     company: str,
     category_display: str | None,
+    caller_local_display: str | None = None,
+    caller_tz_name: str | None = None,
+    caller_timezone_source: str | None = None,
     rescheduled: bool = False,
 ) -> str:
     """Multi-line description for staff: structured sections, plain text (Calendar-friendly)."""
@@ -332,6 +446,15 @@ def _build_booking_calendar_description(
             f"  Quick ref: {when_local_display}",
         ]
     )
+    if caller_tz_name and caller_local_display:
+        lines.extend(
+            [
+                f"  Caller local time: {caller_local_display}",
+                f"  Caller time zone: {caller_tz_name}",
+            ]
+        )
+        if caller_timezone_source and str(caller_timezone_source).strip():
+            lines.append(f"  Caller time zone source: {str(caller_timezone_source).strip()}")
     if visit_summary and str(visit_summary).strip():
         lines.extend(["", "VISIT / NOTES", f"  {str(visit_summary).strip()}"])
     if category_display and str(category_display).strip():
@@ -347,7 +470,7 @@ def _build_booking_calendar_description(
 
 
 def _timezone_str() -> str:
-    return _effective_str_setting("TIMEZONE", "America/Los_Angeles")
+    return _appointment_timezone()
 
 
 
@@ -602,6 +725,9 @@ def get_availability(
     days_ahead: int = 7,
     slot_count: int | None = None,
     for_date: str | None = None,
+    caller_timezone: str | None = None,
+    caller_timezone_source: str | None = None,
+    caller_phone: str | None = None,
 ) -> dict[str, Any]:
     """
     Return availability grouped by day and by time-of-day (morning/afternoon/evening).
@@ -633,8 +759,14 @@ def get_availability(
     Empty result if Google Calendar is not configured or on error: {"by_day": {}, "slots_flat": []}.
     """
     empty = {"by_day": {}, "slots_flat": []}
+    caller_tz, caller_tz_source = _resolve_caller_timezone(
+        caller_timezone=caller_timezone,
+        caller_timezone_source=caller_timezone_source,
+        caller_phone=caller_phone,
+    )
+    caller_profile = "|".join([caller_tz or "", caller_tz_source])
     cache_profile = _availability_cache_profile_key()
-    cache_key = (days_ahead, (for_date or "").strip(), cache_profile)
+    cache_key = (days_ahead, (for_date or "").strip(), cache_profile, caller_profile)
     cache_outcome: str | None = None
     cached_result: dict[str, Any] | None = None
     if _availability_cache_enabled():
@@ -671,7 +803,7 @@ def get_availability(
         ZoneInfo = None  # type: ignore
 
     try:
-        tz_name = _timezone_str()
+        tz_name = _appointment_timezone(service, cal_id)
         tz = ZoneInfo(tz_name) if ZoneInfo else None
         now = datetime.now(timezone.utc)
 
@@ -768,11 +900,9 @@ def get_availability(
             if not overlap and _slot_in_business_hours_utc(cursor, tz_name):
                 if tz:
                     local_dt = cursor.replace(tzinfo=timezone.utc).astimezone(tz)
-                    display = local_dt.strftime("%a %b %d at %I:%M %p")
                     local_date_str = local_dt.strftime("%Y-%m-%d")
                     time_of_day = _time_of_day_bucket(local_dt.hour)
                 else:
-                    display = cursor.strftime("%a %b %d at %I:%M %p")
                     local_date_str = cursor.strftime("%Y-%m-%d")
                     time_of_day = "afternoon"
                 allowed_days = _booking_weekdays()
@@ -782,7 +912,6 @@ def get_availability(
                 slots_raw.append({
                     "start": cursor.strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "end": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "display": display,
                     "local_date_str": local_date_str,
                     "time_of_day": time_of_day,
                 })
@@ -820,12 +949,28 @@ def get_availability(
                         date_display = date_str
                 by_day[date_str] = {"date_display": date_display, "morning": [], "afternoon": [], "evening": []}
             for slot in slot_list:
-                by_day[date_str][bucket].append({k: v for k, v in slot.items() if k in ("start", "end", "display")})
-                slots_flat.append({k: v for k, v in slot.items() if k in ("start", "end", "display")})
+                start_dt = datetime.fromisoformat(str(slot["start"]).replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(str(slot["end"]).replace("Z", "+00:00"))
+                slot_out = _slot_payload(
+                    start_dt_utc=start_dt,
+                    end_dt_utc=end_dt,
+                    appointment_timezone=tz_name,
+                    caller_timezone=caller_tz,
+                    caller_timezone_source=caller_tz_source,
+                )
+                by_day[date_str][bucket].append(slot_out)
+                slots_flat.append(slot_out)
 
         by_day_ordered = dict(sorted(by_day.items()))
         slots_flat.sort(key=lambda s: s.get("start", ""))
-        result = {"by_day": by_day_ordered, "slots_flat": slots_flat}
+        result = {
+            "by_day": by_day_ordered,
+            "slots_flat": slots_flat,
+            "appointment_timezone": tz_name,
+            "appointment_timezone_label": timezone_label(tz_name),
+            "caller_timezone": caller_tz,
+            "caller_timezone_source": caller_tz_source,
+        }
         if _availability_cache_enabled():
             ttl = _availability_cache_ttl_seconds()
             if ttl > 0:
@@ -845,6 +990,8 @@ def book_appointment(
     contact_phone: str,
     contact_email: str | None = None,
     summary: str | None = None,
+    caller_timezone: str | None = None,
+    caller_timezone_source: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a calendar event for the given slot and contact.
@@ -878,16 +1025,23 @@ def book_appointment(
                 "confirmed_slot": None,
                 "calendar_event_link": None,
             }
-        tz_name = _timezone_str()
+        tz_name = _appointment_timezone(service, cal_id)
+        caller_tz, caller_tz_source = _resolve_caller_timezone(
+            caller_timezone=caller_timezone,
+            caller_timezone_source=caller_timezone_source,
+            caller_phone=contact_phone,
+        )
         try:
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo(tz_name)
-            local_dt = start_dt.astimezone(tz)
-            display = local_dt.strftime("%a %b %d at %I:%M %p")
-            message_time = local_dt.strftime("%A, %B %d at %I:%M %p")
+            display = format_local_time(start_dt, tz_name, include_timezone=True)
+            message_time = format_local_time(start_dt, tz_name, include_timezone=True, long=True)
         except Exception:
             display = start_dt.strftime("%a %b %d at %I:%M %p")
             message_time = start_dt.strftime("%A, %B %d at %I:%M %p")
+        caller_display = (
+            format_local_time(start_dt, caller_tz, include_timezone=True, long=True)
+            if caller_tz and not same_timezone(caller_tz, tz_name)
+            else None
+        )
         conflict = _find_conflicting_event(
             service,
             cal_id,
@@ -926,6 +1080,9 @@ def book_appointment(
             when_local_display=display,
             when_local_long=message_time,
             tz_name=tz_name,
+            caller_local_display=caller_display,
+            caller_tz_name=caller_tz,
+            caller_timezone_source=caller_tz_source,
             duration_minutes=slot_mins,
             company=company,
             category_display=category_display,
@@ -946,6 +1103,12 @@ def book_appointment(
                 body["extendedProperties"]["private"]["caller_phone"] = normalized
             if name_stored:
                 body["extendedProperties"]["private"]["caller_name"] = name_stored
+        body.setdefault("extendedProperties", {}).setdefault("private", {})
+        body["extendedProperties"]["private"]["appointment_timezone"] = tz_name
+        body["extendedProperties"]["private"]["appointment_timezone_label"] = timezone_label(tz_name)
+        if caller_tz:
+            body["extendedProperties"]["private"]["caller_timezone"] = caller_tz
+            body["extendedProperties"]["private"]["caller_timezone_source"] = caller_tz_source
         event = service.events().insert(calendarId=cal_id, body=body).execute()
         event_id = event.get("id")
         calendar_event_link = event.get("htmlLink")
@@ -954,11 +1117,13 @@ def book_appointment(
             "success": True,
             "message": f"You're booked for {message_time}.",
             "event_id": event_id,
-            "confirmed_slot": {
-                "start": slot_start_iso,
-                "end": end_dt.isoformat(),
-                "display": display,
-            },
+            "confirmed_slot": _slot_payload(
+                start_dt_utc=start_dt,
+                end_dt_utc=end_dt,
+                appointment_timezone=tz_name,
+                caller_timezone=caller_tz,
+                caller_timezone_source=caller_tz_source,
+            ),
             "calendar_event_link": calendar_event_link,
         }
     except Exception as e:
@@ -991,7 +1156,7 @@ def list_my_bookings(contact_phone: str, contact_name: str | None = None) -> lis
     try:
         now = datetime.now(timezone.utc)
         time_min = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-        tz_name = _timezone_str()
+        tz_name = _appointment_timezone(service, cal_id)
         try:
             from zoneinfo import ZoneInfo
             tz = ZoneInfo(tz_name)
@@ -1017,6 +1182,13 @@ def list_my_bookings(contact_phone: str, contact_name: str | None = None) -> lis
                 event_id = item.get("id")
                 if not event_id:
                     continue
+                event_tz_name = (
+                    normalize_timezone_name(priv.get("appointment_timezone"))
+                    or normalize_timezone_name(((item.get("start") or {}).get("timeZone")))
+                    or tz_name
+                )
+                caller_tz = normalize_timezone_name(priv.get("caller_timezone"))
+                caller_tz_source = str(priv.get("caller_timezone_source") or "").strip() or "none"
                 start_obj = item.get("start") or {}
                 start_dt_str = start_obj.get("dateTime") or start_obj.get("date")
                 if not start_dt_str:
@@ -1034,29 +1206,41 @@ def list_my_bookings(contact_phone: str, contact_name: str | None = None) -> lis
                         start_dt = start_dt.replace(tzinfo=timezone.utc)
                     start_dt_utc = start_dt.astimezone(timezone.utc)
                     start_iso = start_dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    if tz:
-                        local_dt = start_dt_utc.astimezone(tz)
-                        display = local_dt.strftime("%a %b %d at %I:%M %p")
-                    else:
-                        display = start_dt_utc.strftime("%a %b %d at %I:%M %p")
                     end_dt = datetime.fromisoformat((end_dt_str or "").replace("Z", "+00:00")) if end_dt_str else start_dt_utc + timedelta(minutes=_slot_duration_minutes())
                     if end_dt.tzinfo is None:
                         end_dt = end_dt.replace(tzinfo=timezone.utc)
                     end_iso = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    slot = _slot_payload(
+                        start_dt_utc=start_dt_utc,
+                        end_dt_utc=end_dt.astimezone(timezone.utc),
+                        appointment_timezone=event_tz_name,
+                        caller_timezone=caller_tz,
+                        caller_timezone_source=caller_tz_source,
+                    )
+                    display = slot.get("display", start_iso)
                 except (ValueError, TypeError):
                     start_iso = (start_dt_str or "").replace("Z", "+00:00")
                     end_iso = (end_dt_str or "").replace("Z", "+00:00")
                     display = start_iso
-                out.append({
+                    slot = {
+                        "start": start_iso,
+                        "end": end_iso,
+                        "display": display,
+                        "appointment_timezone": event_tz_name,
+                        "appointment_timezone_label": timezone_label(event_tz_name),
+                    }
+                entry = {
                     "event_id": event_id,
-                    "start": start_iso,
-                    "end": end_iso,
+                    "start": slot.get("start", start_iso),
+                    "end": slot.get("end", end_iso),
                     "display": display,
                     "summary": summary,
                     "caller_name": caller_name,
                     "visit_summary": visit_summary,
                     "service_type": service_type,
-                })
+                }
+                entry.update({k: v for k, v in slot.items() if k not in entry})
+                out.append(entry)
             request = service.events().list_next(request, response)
         return sorted(out, key=lambda x: x.get("start", ""))
     except Exception as e:
@@ -1106,6 +1290,8 @@ def edit_booking(
     new_slot_start_iso: str,
     contact_phone: str,
     contact_name: str | None = None,
+    caller_timezone: str | None = None,
+    caller_timezone_source: str | None = None,
 ) -> dict[str, Any]:
     """
     Reschedule the caller's appointment to a new slot. Ownership is by phone number only
@@ -1140,16 +1326,29 @@ def edit_booking(
     # Ownership is by phone only. Name is NOT checked here because AI speech-to-text
     # routinely produces variants (e.g. Nano/Nena/Nana) for the same caller, which
     # would block legitimate owners. The phone from Twilio caller-ID is deterministic.
-    tz_name = _timezone_str()
+    tz_name = (
+        normalize_timezone_name(priv.get("appointment_timezone"))
+        or _appointment_timezone(service, cal_id)
+    )
+    if not caller_timezone:
+        caller_timezone = str(priv.get("caller_timezone") or "").strip() or None
+        caller_timezone_source = str(priv.get("caller_timezone_source") or "").strip() or caller_timezone_source
+    caller_tz, caller_tz_source = _resolve_caller_timezone(
+        caller_timezone=caller_timezone,
+        caller_timezone_source=caller_timezone_source,
+        caller_phone=contact_phone,
+    )
     try:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo(tz_name)
-        local_dt = start_dt.astimezone(tz)
-        display = local_dt.strftime("%a %b %d at %I:%M %p")
-        message_time = local_dt.strftime("%A, %B %d at %I:%M %p")
+        display = format_local_time(start_dt, tz_name, include_timezone=True)
+        message_time = format_local_time(start_dt, tz_name, include_timezone=True, long=True)
     except Exception:
         display = start_dt.strftime("%a %b %d at %I:%M %p")
         message_time = start_dt.strftime("%A, %B %d at %I:%M %p")
+    caller_display = (
+        format_local_time(start_dt, caller_tz, include_timezone=True, long=True)
+        if caller_tz and not same_timezone(caller_tz, tz_name)
+        else None
+    )
     end_dt = start_dt + timedelta(minutes=_slot_duration_minutes())
     conflict = _find_conflicting_event(
         service,
@@ -1205,6 +1404,9 @@ def edit_booking(
         duration_minutes=slot_mins,
         company=company,
         category_display=category_for_build,
+        caller_local_display=caller_display,
+        caller_tz_name=caller_tz,
+        caller_timezone_source=caller_tz_source,
         rescheduled=True,
     )
     body = {
@@ -1213,17 +1415,29 @@ def edit_booking(
         "start": {"dateTime": start_dt.isoformat(), "timeZone": tz_name},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": tz_name},
     }
+    body["extendedProperties"] = {
+        "private": {
+            **priv,
+            "appointment_timezone": tz_name,
+            "appointment_timezone_label": timezone_label(tz_name),
+        }
+    }
+    if caller_tz:
+        body["extendedProperties"]["private"]["caller_timezone"] = caller_tz
+        body["extendedProperties"]["private"]["caller_timezone_source"] = caller_tz_source
     try:
         service.events().patch(calendarId=cal_id, eventId=event_id, body=body).execute()
     except Exception as e:
         Log.error(f"edit_booking patch failed: {e}")
         return {"success": False, "message": "We couldn't move the appointment. Our team will follow up.", "confirmed_slot": None}
     invalidate_availability_cache(reason="edit_booking")
-    confirmed_slot = {
-        "start": start_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "end": end_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "display": display,
-    }
+    confirmed_slot = _slot_payload(
+        start_dt_utc=start_dt,
+        end_dt_utc=end_dt,
+        appointment_timezone=tz_name,
+        caller_timezone=caller_tz,
+        caller_timezone_source=caller_tz_source,
+    )
     return {
         "success": True,
         "message": f"Your appointment has been moved to {message_time}.",
@@ -1237,4 +1451,3 @@ def is_booking_enabled() -> bool:
         return False
     service, cal_id = _get_calendar_service()
     return bool(service and cal_id)
-

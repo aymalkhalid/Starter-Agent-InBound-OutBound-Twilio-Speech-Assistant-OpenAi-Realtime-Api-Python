@@ -16,7 +16,7 @@ At runtime, `config.py` renders placeholders and produces `Config.SYSTEM_MESSAGE
 
 The markdown file defines OpenAI Realtime-aligned behavior:
 
-- Role, conversation flow, reasoning, personality
+- Role, conversation flow, reasoning, personality, delivery style
 - Preambles and verbosity
 - Silence handling (`wait_for_user`) and unclear audio
 - Entity capture (collection order, spelled-out values, spoken numbers, confirmation workflow)
@@ -29,6 +29,7 @@ The markdown file defines OpenAI Realtime-aligned behavior:
 | --- | --- | --- |
 | `{company_name}` | `Config.COMPANY_NAME` | Business name |
 | `{agent_name}` | `Config.AGENT_NAME` | Spoken agent name |
+| `{delivery_instruction}` | `_build_delivery_instruction()` | Tone, warmth, expressiveness, pacing, and speech-style anchors |
 | `{language_instruction}` | `_build_language_instruction()` | English-primary or multilingual policy |
 | `{accent_instruction}` | `_build_accent_instruction()` | English delivery accent, separate from language |
 | `{reasoning_effort_instruction}` | `_build_reasoning_effort_instruction()` | gpt-realtime-2 effort guidance (empty for older models) |
@@ -37,7 +38,7 @@ The markdown file defines OpenAI Realtime-aligned behavior:
 | `{booking_instruction}` | `_build_booking_instruction()` | Booking flow and confirmation rules |
 | `{transfer_instruction}` | `_build_transfer_instruction()` | Human handoff rules |
 
-Change wording in the markdown file when possible. Change env vars when behavior depends on enabled features or voice/language settings.
+Change wording in the markdown file when possible. Change env vars when behavior depends on enabled features or tone/voice/language settings.
 
 Reference: [Starter prompt ↔ guide mapping](./references/STARTER_PROMPT_MAPPING.md)
 
@@ -96,7 +97,24 @@ VAD can also be tuned from the dashboard Settings panel when Supabase is enabled
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2` | Realtime model id |
 | `REALTIME_REASONING_EFFORT` | `low` | `minimal` … `xhigh`; sent in session for `gpt-realtime-2` only |
 | `VOICE` | `cedar` | OpenAI Realtime voice |
+| `ASSISTANT_TONE` | `warm professional` | Short tone label inserted into delivery guidance |
+| `ASSISTANT_WARMTH` | `warm` | `neutral`, `warm`, `very_warm` |
+| `ASSISTANT_EXPRESSIVENESS` | `balanced` | `reserved`, `balanced`, `expressive` |
+| `ASSISTANT_PACING` | `moderate` | `relaxed`, `moderate`, `brisk` |
 | `TEMPERATURE` | `0.8` | Legacy compatibility value; not sent to GA Realtime sessions |
+
+## Tone And Delivery
+
+These settings tune the rendered `# Delivery Style` prompt block. They control spoken style; they do not change the selected OpenAI voice.
+
+```env
+ASSISTANT_TONE=warm professional
+ASSISTANT_WARMTH=warm
+ASSISTANT_EXPRESSIVENESS=balanced
+ASSISTANT_PACING=moderate
+```
+
+Use `very_warm` or `expressive` only when the caller experience should feel more emotionally present. Keep `balanced` and `moderate` for appointment setting, support, and other task-focused calls.
 
 ## Language And Accent
 
@@ -121,21 +139,42 @@ LANGUAGE_SWITCH_POLICY=default_only
 ## Optional Features
 
 - **Call records:** `CALL_RECORD_BACKEND` (`webhook`, `supabase`, …), `WEBHOOK_URL`, `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_CALL_RECORD_TABLE=call_records`
-- **Booking:** `BOOKING_ENABLED=true`, `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_CREDENTIALS_JSON`
+- **Booking:** `BOOKING_ENABLED=true`, `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_CREDENTIALS_JSON`, `TIMEZONE` as the appointment/business IANA timezone such as `America/Los_Angeles`
 - **Recording:** `CALL_RECORDING_ENABLED=true`, `RECORDING_STATUS_CALLBACK_BASE_URL`
 - **Transfer:** `HUMAN_TRANSFER_URL`, `HUMAN_TRANSFER_ENABLED`, `HUMAN_TRANSFER_DIAL_NUMBER`
 - **Outbound:** `OUTBOUND_ENABLED=true`, Twilio credentials, Supabase credentials
 
+## Booking Timezones
+
+`TIMEZONE` is the appointment/business timezone and is the source of truth for
+availability, booking, and Google Calendar event writes. Caller timezone is
+optional display context from outbound `contact_timezone`, explicit caller
+correction, or a weak caller-ID hint.
+
+When caller timezone differs, the AI should speak caller-local time first and
+clinic time second, while still booking the exact ISO slot returned by
+`get_availability`.
+
+Example:
+
+```text
+For you, Tuesday at 9 AM Mountain, which is 8 AM Pacific at the clinic.
+```
+
+For manual and edge-case testing, see [Booking timezones](./BOOKING_TIMEZONES.md).
+
 ## Supabase Schema
 
 Run `docs/supabase-schema/call_records_schema.sql` when enabling Supabase call-record storage. Existing deployments can point `SUPABASE_CALL_RECORD_TABLE` at an older `leads` table while migrating.
+
+Call records are enriched over time: `save_call_record` writes the live summary and latest `call_sid`; `/recording-status` attaches `recording_link`; dashboard transcription writes `transcript`; enhancement writes `transcript_summary`, `transcript_issues`, and `transcript_enhanced_at`. The dashboard shows a single compact `Call SID` field and expands related SIDs only when metadata contains multiple call attempts.
 
 Supabase `app_settings` stores runtime-safe overrides only. Do not put full system prompts, industry prompt profiles, or tool policy in `app_settings`; keep those in code and review them with tests.
 
 ## Changing Behavior Safely
 
 1. Edit `prompts/main_system_instructions.md` for conversational rules.
-2. Edit `.env` for language, accent, reasoning effort, and feature toggles.
+2. Edit `.env` for tone, voice, language, accent, reasoning effort, and feature toggles.
 3. Edit tool schemas/handlers in `services/openai_service.py` when tool args or side effects change.
 4. Preview the rendered prompt with `python scripts/preview_system_prompt.py`.
 5. Run `pytest tests/test_system_instructions.py` after prompt or config builder changes.

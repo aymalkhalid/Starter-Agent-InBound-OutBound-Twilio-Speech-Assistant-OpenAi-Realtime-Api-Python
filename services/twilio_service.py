@@ -18,6 +18,14 @@ _CALLER_CACHE_TTL_SEC = 300
 _OUTBOUND_CONTEXT_CACHE: dict[str, tuple[str, str, float]] = {}
 
 
+def _canonical_phone_for_comparison(phone: str) -> str:
+    """Normalize phone numbers enough to detect accidental self-calls."""
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if len(digits) == 11 and digits.startswith("1"):
+        return digits[1:]
+    return digits
+
+
 class TwilioService:
     """
     Provides all Twilio integration logic for the application.
@@ -395,12 +403,23 @@ class TwilioService:
         actual_from = (from_number or Config.get_outbound_from_number()).strip()
         if not actual_from:
             raise RuntimeError("No outbound From number configured (TWILIO_OUTBOUND_NUMBER)")
+        actual_to = (to or "").strip()
+        if not actual_to:
+            raise RuntimeError("No outbound destination number provided")
+        if (
+            _canonical_phone_for_comparison(actual_to)
+            and _canonical_phone_for_comparison(actual_to) == _canonical_phone_for_comparison(actual_from)
+        ):
+            raise RuntimeError(
+                "Outbound destination matches TWILIO_OUTBOUND_NUMBER. "
+                "Use the lead's real phone number for `phone`; keep the Twilio number only as the caller ID."
+            )
 
         def _create():
             from twilio.rest import Client
             client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
             kwargs = {
-                "to": to,
+                "to": actual_to,
                 "from_": actual_from,
                 "url": twiml_url,
             }

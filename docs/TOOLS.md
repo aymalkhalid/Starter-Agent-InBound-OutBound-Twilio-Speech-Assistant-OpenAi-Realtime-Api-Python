@@ -53,4 +53,22 @@ Slow or external tools include **preamble sample phrases** in their descriptions
 
 Exact values matter for booking and records: use ISO slot times from `get_availability`, confirm phone/email before writes, and recover from failures without repeating identical failed calls.
 
+## Booking tool timezone behavior
+
+Booking tools keep one appointment/business timezone as the booking authority:
+`Config.TIMEZONE`. Caller timezone is used only for display and call-record
+context.
+
+| Tool | Timezone behavior |
+| --- | --- |
+| `get_availability` | Returns UTC slot starts plus appointment display and caller-local display when caller timezone differs. |
+| `book_appointment` | Books the exact returned `slot_start_iso`; writes Google Calendar event timezone as the appointment timezone. |
+| `edit_booking` | Reschedules to the exact returned ISO slot and preserves appointment timezone authority. |
+| `list_my_bookings` | Displays existing bookings and caller-local time when stored. |
+
+After a successful booking, the call-record payload should include
+`confirmed_slot`, `calendar_event_link`, and `metadata.appointments[]` so the
+dashboard Booking row can show the appointment and Calendar link. See
+[Booking timezones](./BOOKING_TIMEZONES.md).
+
 Future external tools register through `services/tool_registry.py` and load via `services/mcp_adapter.py` (disabled no-op in v1). See [Diagrams §23](./DIAGRAMS.md#23-external-tools-scaffold-mcp--tool-registry).

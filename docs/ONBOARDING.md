@@ -10,7 +10,7 @@ One-page path from clone to a working phone agent, with optional features in ord
 | --- | --- | --- |
 | 1 | `python3 -m venv env && source env/bin/activate && pip install -r requirements.txt` | Dependencies install |
 | 2 | `cp .env.example .env` — set `OPENAI_API_KEY` | `python main.py` starts |
-| 3 | Edit `prompts/main_system_instructions.md` (company tone, intake flow) | Prompt reflects your use case |
+| 3 | Edit `prompts/main_system_instructions.md` (behavior, intake flow) and `.env` delivery controls | Prompt reflects your use case |
 | 4 | Expose HTTPS: `ngrok http 5050` **or** `./scripts/deploy-cloudrun.sh` | Public URL reachable |
 | 5 | Twilio Voice webhook → `{URL}/incoming-call` | Inbound call reaches AI |
 | 6 | Place test call — greet, talk, say goodbye | Agent hangs up via `end_call` |
@@ -26,7 +26,7 @@ Diagram: [§2 Inbound sequence](./DIAGRAMS.md#2-inbound-call-sequence) · [§19 
 | What | Where |
 | --- | --- |
 | Conversation rules, tool policy, safety | `prompts/main_system_instructions.md` |
-| Agent name, voice, language, accent | `.env` (`AGENT_NAME`, `VOICE`, `ASSISTANT_*`) |
+| Agent name, tone, voice, language, accent | `.env` (`AGENT_NAME`, `VOICE`, `ASSISTANT_*`) |
 | Tool schemas + side effects | `services/openai_service.py` |
 | Greeting / farewell phrasing | `system_instructions.py` |
 

@@ -30,6 +30,7 @@ class ConnectionState:
         self.is_outbound_call: bool = False
         self.outbound_campaign_id: Optional[str] = None
         self.outbound_contact_id: Optional[str] = None
+        self.outbound_contact_timezone: Optional[str] = None
         # Timestamp (seconds) when we last sent assistant audio to Twilio (for echo debounce)
         self.last_outgoing_audio_at: Optional[float] = None
         # Call outcome for context-aware goodbye (set by save_call_record / book_appointment)

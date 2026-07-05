@@ -1,8 +1,8 @@
 """
 Dynamic settings: load runtime-safe overrides from Supabase and apply to Config.
 
-Dashboard Settings can change transcription, voice, VAD, booking, transfer, and
-similar knobs without editing .env. Main prompt content and industry behavior
+Dashboard Settings can change transcription, voice, tone, VAD, booking, transfer,
+and similar knobs without editing .env. Main prompt content and industry behavior
 stay prompt-as-code in prompts/main_system_instructions.md. See docs/CONFIGURATION.md.
 """
 from __future__ import annotations
@@ -13,11 +13,15 @@ from typing import Any
 from config import (
     Config,
     _normalize_accent_strength,
+    _normalize_expressiveness,
     _normalize_language_switch_policy,
+    _normalize_pacing,
     _normalize_realtime_voice,
+    _normalize_warmth,
     _sanitize_prompt_control,
 )
 from services.log_utils import Log
+from services.timezone_utils import normalize_timezone_name
 
 # Runtime-safe keys the dashboard can override. Value type: "str" | "bool" | "int" | "float"
 # Do not add full prompt bodies, prompt-profile ids, or industry templates here.
@@ -27,6 +31,10 @@ OVERRIDABLE_KEYS: dict[str, str] = {
     "TRANSCRIPT_ENHANCEMENT_ENABLED": "bool",
     "CALL_RECORDING_ENABLED": "bool",
     "VOICE": "str",
+    "ASSISTANT_TONE": "str",
+    "ASSISTANT_WARMTH": "str",
+    "ASSISTANT_EXPRESSIVENESS": "str",
+    "ASSISTANT_PACING": "str",
     "ASSISTANT_LANGUAGE": "str",
     "ASSISTANT_ACCENT": "str",
     "ASSISTANT_ACCENT_STRENGTH": "str",
@@ -55,6 +63,7 @@ OVERRIDABLE_KEYS: dict[str, str] = {
     "TRANSCRIPT_ENHANCEMENT_MODEL": "str",
     # Google Calendar booking (e.g. primary or @group.calendar.google.com)
     "GOOGLE_CALENDAR_ID": "str",
+    "TIMEZONE": "str",
 }
 
 
@@ -132,6 +141,18 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
                 Config.CALL_RECORDING_ENABLED = bool(val)
             elif key == "VOICE":
                 Config.VOICE = _normalize_realtime_voice(val if isinstance(val, str) else None)
+            elif key == "ASSISTANT_TONE":
+                Config.ASSISTANT_TONE = _sanitize_prompt_control(val if isinstance(val, str) else None, "warm professional", 80)
+                prompt_needs_rebuild = True
+            elif key == "ASSISTANT_WARMTH":
+                Config.ASSISTANT_WARMTH = _normalize_warmth(val if isinstance(val, str) else None)
+                prompt_needs_rebuild = True
+            elif key == "ASSISTANT_EXPRESSIVENESS":
+                Config.ASSISTANT_EXPRESSIVENESS = _normalize_expressiveness(val if isinstance(val, str) else None)
+                prompt_needs_rebuild = True
+            elif key == "ASSISTANT_PACING":
+                Config.ASSISTANT_PACING = _normalize_pacing(val if isinstance(val, str) else None)
+                prompt_needs_rebuild = True
             elif key == "ASSISTANT_LANGUAGE":
                 Config.ASSISTANT_LANGUAGE = _sanitize_prompt_control(val if isinstance(val, str) else None, "English", 48)
                 prompt_needs_rebuild = True
@@ -155,6 +176,10 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
             elif key == "BOOKING_ENABLED":
                 Config.BOOKING_ENABLED = bool(val)
                 prompt_needs_rebuild = True
+            elif key == "TIMEZONE":
+                tz_name = normalize_timezone_name(val if isinstance(val, str) else None)
+                if tz_name:
+                    Config.TIMEZONE = tz_name
             elif key == "BOOKING_SLOT_DURATION_MINUTES":
                 setattr(Config, "BOOKING_SLOT_DURATION_MINUTES", max(1, int(val)) if isinstance(val, (int, float)) else 60)
             elif key == "BUSINESS_APPOINTMENT_OPENING_TIME":
@@ -201,10 +226,15 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
         "AGENT_NAME",
         "COMPANY_NAME",
         "BOOKING_ENABLED",
+        "ASSISTANT_TONE",
+        "ASSISTANT_WARMTH",
+        "ASSISTANT_EXPRESSIVENESS",
+        "ASSISTANT_PACING",
         "ASSISTANT_LANGUAGE",
         "ASSISTANT_ACCENT",
         "ASSISTANT_ACCENT_STRENGTH",
         "LANGUAGE_SWITCH_POLICY",
+        "TIMEZONE",
         "BOOKING_SLOT_DURATION_MINUTES",
         "BUSINESS_APPOINTMENT_OPENING_TIME",
         "BUSINESS_APPOINTMENT_CLOSING_TIME",
@@ -242,6 +272,8 @@ def get_effective_settings() -> dict[str, Any]:
             out[key] = getattr(Config, "BOOKING_DAYS_ENABLED", "") or ""
         elif key == "GOOGLE_CALENDAR_ID":
             out[key] = os.environ.get("GOOGLE_CALENDAR_ID", "") or ""
+        elif key == "TIMEZONE":
+            out[key] = getattr(Config, "TIMEZONE", "America/Los_Angeles") or "America/Los_Angeles"
         else:
             out[key] = getattr(Config, key, None)
     return out

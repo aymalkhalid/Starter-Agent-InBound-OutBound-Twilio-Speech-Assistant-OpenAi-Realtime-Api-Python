@@ -3,11 +3,16 @@ Quick test for Google Calendar integration.
 Run from project root: python -m tests.test_google_calendar
 Or: python tests/test_google_calendar.py
 """
+import os
+import sys
 import time
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Ensure project root is on path when pytest is launched via the console script.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services import google_calendar_booking_service as gcs
 from services.google_calendar_booking_service import (
@@ -223,7 +228,7 @@ def test_availability_cache_metrics_hit_seeded(monkeypatch):
     monkeypatch.setenv("AVAILABILITY_CACHE_ENABLED", "true")
     gcs.reset_availability_cache_metrics()
     profile = gcs._availability_cache_profile_key()
-    k = (7, "", profile)
+    k = (7, "", profile, "|none")
     gcs._availability_cache[k] = ({"by_day": {}, "slots_flat": []}, time.time() + 60)
     try:
         out = get_availability(7, for_date=None)
@@ -297,6 +302,7 @@ class _FakeEventsRequest:
 class _FakeEventsApi:
     def __init__(self, items):
         self._items = items
+        self.inserted_body = None
 
     def list(self, **kwargs):
         return _FakeEventsRequest({"items": self._items})
@@ -304,17 +310,25 @@ class _FakeEventsApi:
     def list_next(self, request, response):
         return None
 
+    def insert(self, **kwargs):
+        self.inserted_body = kwargs.get("body") or {}
+        return _FakeEventsRequest({"id": "evt_inserted", "htmlLink": "https://calendar.test/evt_inserted"})
+
 
 class _FakeCalendarService:
-    def __init__(self, items=None, busy=None, cal_id="calendar_id"):
+    def __init__(self, items=None, busy=None, cal_id="calendar_id", calendar_timezone="America/Los_Angeles"):
         self._events = _FakeEventsApi(items or [])
         self._freebusy = _FakeFreeBusyApi(busy or [], cal_id)
+        self._calendars = _FakeCalendarsApi(calendar_timezone)
 
     def events(self):
         return self._events
 
     def freebusy(self):
         return self._freebusy
+
+    def calendars(self):
+        return self._calendars
 
 
 class _FakeFreeBusyRequest:
@@ -335,6 +349,99 @@ class _FakeFreeBusyApi:
     def query(self, body):
         self.last_body = body
         return _FakeFreeBusyRequest(self._busy, self._cal_id)
+
+
+class _FakeCalendarsApi:
+    def __init__(self, calendar_timezone):
+        self._calendar_timezone = calendar_timezone
+
+    def get(self, **kwargs):
+        return _FakeEventsRequest({"timeZone": self._calendar_timezone})
+
+
+def test_slot_payload_includes_appointment_and_caller_timezone_displays():
+    start_dt = gcs._parse_iso_datetime_utc("2099-01-05T17:00:00Z")
+    end_dt = gcs._parse_iso_datetime_utc("2099-01-05T18:00:00Z")
+
+    slot = gcs._slot_payload(
+        start_dt_utc=start_dt,
+        end_dt_utc=end_dt,
+        appointment_timezone="America/Los_Angeles",
+        caller_timezone="America/Chicago",
+        caller_timezone_source="lead",
+    )
+
+    assert slot["start"] == "2099-01-05T17:00:00Z"
+    assert slot["display"].endswith("09:00 AM Pacific Time")
+    assert slot["appointment_timezone"] == "America/Los_Angeles"
+    assert slot["appointment_timezone_label"] == "Pacific Time"
+    assert slot["caller_display"].endswith("11:00 AM Central Time")
+    assert slot["caller_timezone"] == "America/Chicago"
+    assert slot["caller_timezone_source"] == "lead"
+
+
+def test_get_availability_returns_caller_local_display(monkeypatch):
+    """Availability stays on the same ISO slot while exposing caller-local display."""
+    monkeypatch.setenv("AVAILABILITY_CACHE_ENABLED", "false")
+    monkeypatch.setattr(Config, "TIMEZONE", "America/Los_Angeles")
+    monkeypatch.setattr(Config, "BUSINESS_APPOINTMENT_OPENING_TIME", "09:00")
+    monkeypatch.setattr(Config, "BUSINESS_APPOINTMENT_CLOSING_TIME", "10:00")
+    monkeypatch.setattr(Config, "BOOKING_SLOT_DURATION_MINUTES", 60)
+    monkeypatch.setattr(Config, "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", 0)
+    monkeypatch.setattr(Config, "BOOKING_DAYS_ENABLED", "")
+    monkeypatch.setattr(
+        gcs,
+        "_get_calendar_service",
+        lambda: (_FakeCalendarService(busy=[], cal_id="calendar_id"), "calendar_id"),
+    )
+    gcs._availability_cache.clear()
+
+    out = get_availability(
+        days_ahead=7,
+        for_date="2099-01-05",
+        caller_timezone="America/Chicago",
+        caller_timezone_source="lead",
+    )
+    slots_flat = out.get("slots_flat") or []
+
+    assert out["appointment_timezone"] == "America/Los_Angeles"
+    assert out["caller_timezone"] == "America/Chicago"
+    assert out["caller_timezone_source"] == "lead"
+    assert len(slots_flat) == 1
+    assert slots_flat[0]["start"] == "2099-01-05T17:00:00Z"
+    assert slots_flat[0]["display"].endswith("09:00 AM Pacific Time")
+    assert slots_flat[0]["caller_display"].endswith("11:00 AM Central Time")
+
+
+def test_book_appointment_writes_timezone_metadata(monkeypatch):
+    """Calendar writes remain anchored to appointment timezone and store caller context."""
+    monkeypatch.setattr(Config, "TIMEZONE", "America/Los_Angeles")
+    monkeypatch.setattr(Config, "BOOKING_SLOT_DURATION_MINUTES", 60)
+    service = _FakeCalendarService(items=[], cal_id="calendar_id")
+    monkeypatch.setattr(gcs, "_get_calendar_service", lambda: (service, "calendar_id"))
+
+    result = book_appointment(
+        "2099-01-05T17:00:00Z",
+        "Alice",
+        "+15555550101",
+        summary="Consultation",
+        caller_timezone="America/Chicago",
+        caller_timezone_source="lead",
+    )
+
+    assert result["success"] is True
+    body = service.events().inserted_body
+    assert body["start"]["timeZone"] == "America/Los_Angeles"
+    assert body["end"]["timeZone"] == "America/Los_Angeles"
+    private = body["extendedProperties"]["private"]
+    assert private["appointment_timezone"] == "America/Los_Angeles"
+    assert private["appointment_timezone_label"] == "Pacific Time"
+    assert private["caller_timezone"] == "America/Chicago"
+    assert private["caller_timezone_source"] == "lead"
+    slot = result["confirmed_slot"]
+    assert slot["start"] == "2099-01-05T17:00:00Z"
+    assert slot["display"].endswith("09:00 AM Pacific Time")
+    assert slot["caller_display"].endswith("11:00 AM Central Time")
 
 
 def test_get_availability_prefers_config_settings_and_orders_slots(monkeypatch):
@@ -368,8 +475,8 @@ def test_get_availability_prefers_config_settings_and_orders_slots(monkeypatch):
     starts = [slot["start"] for slot in slots_flat]
     assert starts == sorted(starts)
     assert len(slots_flat) == 15
-    assert slots_flat[0]["display"].endswith("08:00 AM")
-    assert slots_flat[-1]["display"].endswith("10:00 PM")
+    assert slots_flat[0]["display"].endswith("08:00 AM Pacific Time")
+    assert slots_flat[-1]["display"].endswith("10:00 PM Pacific Time")
     assert len(day.get("morning") or []) == 4
     assert len(day.get("afternoon") or []) == 5
     assert len(day.get("evening") or []) == 6
@@ -453,6 +560,7 @@ def run_edge_case_tests():
     test_availability_cache_metrics_miss_without_seed()
     test_availability_cache_profile_key_changes_with_slot_rules()
     test_edit_booking_past_slot()
+    test_slot_payload_includes_appointment_and_caller_timezone_displays()
     test_find_conflicting_event_detects_overlap()
     test_find_conflicting_event_ignores_event_id()
     print("Edge-case tests passed.")

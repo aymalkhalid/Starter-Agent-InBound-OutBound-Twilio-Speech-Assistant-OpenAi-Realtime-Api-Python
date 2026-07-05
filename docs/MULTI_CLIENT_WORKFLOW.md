@@ -87,7 +87,7 @@ Summary questions:
 | Primary goal | Intake? Qualify leads? Book showings? Answer FAQs? Transfer hot leads? |
 | Required data fields | Name, phone, budget, timeline, property type, etc. |
 | Integrations | Supabase dashboard, Google Calendar, CRM webhook, live transfer |
-| Voice / language | `VOICE`, `ASSISTANT_ACCENT`, `LANGUAGE_SWITCH_POLICY` |
+| Tone / voice / language | `ASSISTANT_TONE`, `ASSISTANT_WARMTH`, `ASSISTANT_EXPRESSIVENESS`, `ASSISTANT_PACING`, `VOICE`, `ASSISTANT_ACCENT`, `LANGUAGE_SWITCH_POLICY` |
 | Success criteria | What makes a "good" call? What gets saved? |
 
 Map answers to starter capabilities:
@@ -145,7 +145,7 @@ SYSTEM_INSTRUCTIONS_PATH=prompts/main_system_instructions.md
 
 Edit `prompts/main_system_instructions.md` (or a client copy via `SYSTEM_INSTRUCTIONS_PATH`).
 
-If you use a separate prompt file, **copy the full starter file first** — it must keep all nine placeholders (`{agent_name}`, `{company_name}`, `{language_instruction}`, etc.) or `config.py` rendering will break. See `system_instructions.py` → `REQUIRED_PROMPT_PLACEHOLDERS`.
+If you use a separate prompt file, **copy the full starter file first** — it must keep all required placeholders (`{agent_name}`, `{company_name}`, `{delivery_instruction}`, `{language_instruction}`, etc.) or `config.py` rendering will break. See `system_instructions.py` → `REQUIRED_PROMPT_PLACEHOLDERS`.
 
 **Edit order** (matches [Starter prompt mapping](./references/STARTER_PROMPT_MAPPING.md)):
 
@@ -168,13 +168,13 @@ In a **client repo**, you may need to relax tests that assert `"generic business
 
 ---
 
-### Step 5 — Tune voice and greeting (quick wins)
+### Step 5 — Tune delivery, voice, and greeting (quick wins)
 
 | Goal | Where |
 | --- | --- |
 | Spoken business + agent name | `.env`: `COMPANY_NAME`, `AGENT_NAME` |
 | Custom opening line | `.env`: `WELCOME_MESSAGE` or `GREETING` (supports `{company_name}`, `{agent_name}`) |
-| Voice, accent, reasoning | `.env`: `VOICE`, `ASSISTANT_*`, `REALTIME_REASONING_EFFORT` |
+| Tone, voice, language/accent, reasoning | `.env`: `ASSISTANT_*`, `VOICE`, `REALTIME_REASONING_EFFORT` |
 | Farewell wording | `system_instructions.py` → `get_farewell_instruction()` — only if env defaults are not enough |
 
 ---

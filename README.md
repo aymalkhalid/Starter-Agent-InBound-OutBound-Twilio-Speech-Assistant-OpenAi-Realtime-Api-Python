@@ -105,7 +105,7 @@ https://YOUR_PUBLIC_HOST/incoming-call
 | --- | --- |
 | Conversation behavior | `prompts/main_system_instructions.md` |
 | Tool schemas + handlers | `services/openai_service.py` |
-| Voice, language, accent, reasoning | `.env` or dashboard Settings (see [CONFIGURATION.md](./docs/CONFIGURATION.md)) |
+| Tone, voice, language, accent, reasoning | `.env` or dashboard Settings (see [CONFIGURATION.md](./docs/CONFIGURATION.md)) |
 | Greeting / farewell phrasing | `system_instructions.py` |
 
 Prompting follows the [OpenAI Realtime guide](./docs/references/openai-realtime-models-prompting.md). Section mapping: [STARTER_PROMPT_MAPPING.md](./docs/references/STARTER_PROMPT_MAPPING.md).
@@ -127,6 +127,10 @@ AGENT_NAME=Alex
 OPENAI_REALTIME_MODEL=gpt-realtime-2
 REALTIME_REASONING_EFFORT=low
 VOICE=cedar
+ASSISTANT_TONE=warm professional
+ASSISTANT_WARMTH=warm
+ASSISTANT_EXPRESSIVENESS=balanced
+ASSISTANT_PACING=moderate
 ASSISTANT_LANGUAGE=English
 ASSISTANT_ACCENT=neutral American
 ASSISTANT_ACCENT_STRENGTH=light
@@ -163,6 +167,8 @@ DASHBOARD_USERS=admin:your-secure-password
 ```
 
 Default table: `call_records`. Legacy `leads` tables: set `SUPABASE_CALL_RECORD_TABLE=leads`.
+
+Call records are enriched in stages: live AI summary, Twilio recording link, Whisper transcript, optional OpenAI transcript enhancement, then manual notes/status. The dashboard collapses latest/primary/related Twilio SIDs into one `Call SID` row, with related attempts expandable when present.
 
 Schema: [docs/supabase-schema/](./docs/supabase-schema/)
 
