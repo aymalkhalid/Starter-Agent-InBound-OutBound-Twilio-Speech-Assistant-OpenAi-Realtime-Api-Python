@@ -18,7 +18,7 @@ One shared **WebSocket media bridge** (`/media-stream`) powers **inbound** calls
 <p align="center">
   <a href="./docs/MASTER_DIAGRAM.md">
     <img
-      src="docs/images/MasterArchitectureDiagram.png"
+      src="docs/images/MasterArchitectureDiagram.png?v=4ed761d"
       alt="Voice Agent Starter master architecture: inbound and outbound call triggers, shared WebSocket media bridge, Supabase CRM, Google Calendar, and optional post-call services"
       width="900"
     />

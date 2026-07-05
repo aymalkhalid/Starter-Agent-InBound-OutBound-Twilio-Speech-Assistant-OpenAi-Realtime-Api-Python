@@ -2,7 +2,7 @@
 
 Single-page visual reference for the Twilio + OpenAI Realtime voice-agent starter. Use this file when sharing architecture with image-generation tools (e.g. ChatGPT) or onboarding stakeholders.
 
-![Master architecture diagram](./images/MasterArchitectureDiagram.png)
+![Master architecture diagram](./images/MasterArchitectureDiagram.png?v=4ed761d)
 
 For detailed per-topic flows, see [Diagrams](./DIAGRAMS.md) (23 indexed sections). For copy-paste Mermaid blocks and ChatGPT image prompts, see [Copyable Mermaid](./COPYABLE_MERMAID.md). Narrative context: [Architecture](./ARCHITECTURE.md).
 
