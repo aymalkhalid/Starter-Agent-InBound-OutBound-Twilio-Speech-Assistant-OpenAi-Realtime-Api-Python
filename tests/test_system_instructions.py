@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from portfolio_samples import SAMPLE_PROMPTS
 from config import Config, rebuild_system_message
 from services.openai_service import OpenAISessionManager, OpenAIService
 from system_instructions import (
@@ -31,6 +32,13 @@ _APPOINTMENT_SETTER_PROMPT_KWARGS = {
     **_PROMPT_KWARGS,
     "instructions_path": "prompts/aesthetic_appointment_setter.md",
 }
+
+_GENERIC_APPOINTMENT_SETTER_PROMPT_KWARGS = {
+    **_PROMPT_KWARGS,
+    "instructions_path": "prompts/generic_appointment_setter.md",
+}
+
+_SAMPLE_PROMPT_PATHS = tuple(SAMPLE_PROMPTS.values())
 
 
 def test_main_system_instructions_file_is_single_source_of_truth():
@@ -63,6 +71,104 @@ def test_aesthetic_appointment_setter_prompt_has_required_placeholders():
     template = load_system_instructions("prompts/aesthetic_appointment_setter.md")
     for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
         assert placeholder in template, f"missing placeholder {placeholder}"
+
+
+def test_generic_appointment_setter_prompt_has_required_placeholders():
+    template = load_system_instructions("prompts/generic_appointment_setter.md")
+    for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
+        assert placeholder in template, f"missing placeholder {placeholder}"
+
+
+def test_generic_appointment_setter_prompt_renders_reusable_flow():
+    prompt = render_system_instructions(**_GENERIC_APPOINTMENT_SETTER_PROMPT_KWARGS)
+    lower = prompt.lower()
+    assert "outbound appointment-setting voice agent" in lower
+    assert "contact context" in lower
+    assert "use `get_availability` before offering exact times" in lower
+    assert "business time" in lower
+    assert "do not call it \"my time\"" in lower
+    assert "aesthetic clinic" not in lower
+    assert "botox" not in lower
+    assert "t-shape" not in lower
+    assert "save_call_record" in prompt
+    assert "book_appointment" in prompt
+    assert "wait_for_user" in prompt
+    for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
+        assert placeholder not in prompt, f"unrendered placeholder {placeholder}"
+
+
+@pytest.mark.parametrize("instructions_path", _SAMPLE_PROMPT_PATHS)
+def test_portfolio_sample_prompts_keep_required_placeholder_contract(instructions_path):
+    template = load_system_instructions(instructions_path)
+    for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
+        assert placeholder in template, f"{instructions_path} missing placeholder {placeholder}"
+
+
+@pytest.mark.parametrize("instructions_path", _SAMPLE_PROMPT_PATHS)
+def test_portfolio_sample_prompts_render_core_tool_guidance(instructions_path):
+    prompt = render_system_instructions(**{**_PROMPT_KWARGS, "instructions_path": instructions_path})
+    lower = prompt.lower()
+    assert "save_call_record" in prompt
+    assert "booking" in lower
+    assert "handoff" in lower
+    assert "available tool names may include" in lower
+    assert "use only tools present in the current session" in lower
+    for placeholder in REQUIRED_PROMPT_PLACEHOLDERS:
+        assert placeholder not in prompt, f"{instructions_path} has unrendered placeholder {placeholder}"
+
+
+@pytest.mark.parametrize("instructions_path", _SAMPLE_PROMPT_PATHS)
+def test_portfolio_sample_prompts_follow_shared_quality_contract(instructions_path):
+    template = load_system_instructions(instructions_path)
+    lower = template.lower()
+    for heading in (
+        "# Role and Objective",
+        "# Conversation Flow",
+        "# Booking",
+        "# Call Records",
+        "# Human Handoff",
+        "# Voice and Language",
+        "# Tools",
+    ):
+        assert heading in template, f"{instructions_path} missing {heading}"
+
+    assert "boundaries" in lower or "safety" in lower, f"{instructions_path} needs a boundary/safety section"
+    assert "ask one question" in lower, f"{instructions_path} should ask one question at a time"
+    assert "use only tools present in the current session" in lower
+    assert "confirm before write actions" in lower
+    assert "save a call record" in lower or "save_call_record" in template
+    assert "handoff" in lower
+    assert (
+        "do not say the appointment, meeting, callback slot, handoff, or saved record is complete "
+        "until the related tool succeeds"
+    ) in lower
+
+
+def test_sample_prompt_quality_doc_is_linked_and_actionable():
+    root = Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "SAMPLE_PROMPT_QUALITY.md").read_text(encoding="utf-8")
+    portfolio_doc = (root / "docs" / "PORTFOLIO_SAMPLES.md").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    docs_index = (root / "docs" / "README.md").read_text(encoding="utf-8")
+
+    assert "Sample Prompt Quality Checklist" in doc
+    assert "Required Sections" in doc
+    assert "Required Placeholders" in doc
+    assert "Shared Behavior Rules" in doc
+    assert "`# Role and Objective`" in doc
+    assert "`# Booking`" in doc
+    assert "`# Call Records`" in doc
+    assert "`# Human Handoff`" in doc
+    assert "{booking_instruction}" in doc
+    assert "{call_record_instruction}" in doc
+    assert "{transfer_instruction}" in doc
+    assert "Ask one question at a time." in doc
+    assert "Use only tools present in the current Realtime session." in doc
+    assert "Do not say the appointment, meeting, callback slot, handoff, or saved record" in doc
+    assert "docs/PORTFOLIO_DEMO_ACCEPTANCE.md" in doc
+    assert "SAMPLE_PROMPT_QUALITY.md" in portfolio_doc
+    assert "SAMPLE_PROMPT_QUALITY.md" in readme
+    assert "SAMPLE_PROMPT_QUALITY.md" in docs_index
 
 
 def test_aesthetic_appointment_setter_prompt_renders_core_flow():
@@ -168,6 +274,7 @@ def test_prompt_includes_tool_behavior_and_failure_recovery():
     assert "appointment or business timezone as the booking authority" in lower
     assert "never offer or confirm a bare time when caller timezone may differ" in lower
     assert "caller-local time first" in lower
+    assert "business time" in lower
     assert "never call it \"my time\"" in lower
     assert "do not repeatedly call the same tool with the same arguments after failure" in lower
     assert "entity collection order" in lower

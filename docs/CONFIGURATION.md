@@ -50,6 +50,13 @@ Preview the fully rendered Realtime instructions locally:
 python scripts/preview_system_prompt.py
 ```
 
+For portfolio demos, keep `SYSTEM_INSTRUCTIONS_PATH=prompts/main_system_instructions.md`
+as the generic inbound receptionist default, or point it at one of the sample
+prompts in `prompts/samples/`. Use `prompts/generic_appointment_setter.md` when
+you want a reusable outbound appointment-setting script. See
+[Portfolio sample workflow](./PORTFOLIO_SAMPLES.md) for the sample prompt paths,
+campaign types, and demo contact assets.
+
 ## Silence, background audio, and unclear speech
 
 The prompt separates two cases (see `# Handling Silence and Background Noise` and `# Unclear Audio`):
@@ -152,13 +159,13 @@ optional display context from outbound `contact_timezone`, explicit caller
 correction, or a weak caller-ID hint.
 
 When caller timezone differs, the AI should speak caller-local time first and
-clinic time second, while still booking the exact ISO slot returned by
+business appointment time second, while still booking the exact ISO slot returned by
 `get_availability`.
 
 Example:
 
 ```text
-For you, Tuesday at 9 AM Mountain, which is 8 AM Pacific at the clinic.
+For you, Tuesday at 9 AM Mountain, which is 8 AM Pacific business time.
 ```
 
 For manual and edge-case testing, see [Booking timezones](./BOOKING_TIMEZONES.md).

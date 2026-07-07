@@ -24,7 +24,7 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | Entity Capture | `# Entity Capture` + collection order, spelled-out chars, spoken numbers, confirmation, workflow | Full OpenAI exact-entity pattern for phone, email, slots |
 | Instruction precision | `# Instruction Precision` | Avoid literal traps; scoped rules over broad must/always |
 | Tools | `# Tools`, `{tools_availability_instruction}`, dynamic blocks | Eagerness, read/write rules, failure recovery |
-| Booking timezones | `# Tools` → `## Booking timezones`; TVAAI `## Step 9: Offer Slots` and `## Step 12: Confirm and Close` | Appointment timezone is booking authority; when caller timezone differs, spoken offers/confirmations lead with caller-local time and then clinic/appointment time |
+| Booking timezones | `# Tools` → `## Booking timezones`; optional sample prompts may add industry-specific wording | Appointment timezone is booking authority; when caller timezone differs, spoken offers/confirmations lead with caller-local time and then business/appointment time |
 | Escalation / Safety | `# Safety`, `# End Call` | Basic guardrails; expand for production |
 
 ## Implemented in code (not only prompt)

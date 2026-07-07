@@ -2092,6 +2092,42 @@
       color: var(--text);
     }
 
+    .ob-type-details {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 0.7rem 0.8rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .ob-type-details.open {
+      display: block;
+    }
+
+    .ob-type-details strong {
+      color: var(--text);
+      font-size: 0.84rem;
+      margin-right: 0.45rem;
+    }
+
+    .ob-type-details .ob-type-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.8rem;
+      align-items: center;
+      margin-top: 0.45rem;
+    }
+
+    .ob-type-details code {
+      background: #e2e8f0;
+      color: #334155;
+      border-radius: 5px;
+      padding: 0.08rem 0.28rem;
+      font-size: 0.74rem;
+    }
+
     .ob-script-panel {
       display: flex;
       flex-direction: column;
@@ -2851,6 +2887,7 @@
                 <div class="ob-field"><label for="ob-concurrency">Concurrency</label><input type="number"
                     id="ob-concurrency" value="1" min="1" max="10" /></div>
               </div>
+              <div class="ob-type-details" id="ob-type-details" aria-live="polite"></div>
               <div class="ob-script-panel">
                 <div class="ob-script-header">
                   <label for="ob-message">Message / script</label>
@@ -2876,7 +2913,7 @@
                         <th>Name</th>
                         <th>Phone</th>
                         <th>Email</th>
-                        <th>Lead Offer</th>
+                        <th>Interest / Offer</th>
                         <th>Timezone</th>
                         <th>Callback</th>
                         <th>Extra</th>
@@ -3475,7 +3512,7 @@
           "<dt>Status</dt>" +
           "<dd><div class=\"modal-actions\"><button type=\"button\" id=\"modal-delete\">Delete</button><span id=\"modal-status-badge\" class=\"status-badge " + statusBadgeClassModal + "\">" + (currentStatusLabel || "Pending") + "</span> <select id=\"modal-lead-status\">" + statusOptions + "</select> <button type=\"button\" id=\"modal-save\">Save</button></div></dd>" +
           "</dl></div>"
-        ) : "<p class=\"muted\" style=\"margin-top:1rem;\">Notes and status require lead id (Supabase).</p>");
+        ) : "<p class=\"muted\" style=\"margin-top:1rem;\">Notes and status require a call record id (Supabase).</p>");
       if (lead.id) {
         var notesListEl = document.getElementById("modal-notes-list");
         function addNote(text) {
@@ -4144,6 +4181,7 @@
       var obProgressFill = document.getElementById("ob-progress-fill");
       var obProgressText = document.getElementById("ob-progress-text");
       var obTypeSelect = document.getElementById("ob-type");
+      var obTypeDetails = document.getElementById("ob-type-details");
       var obScriptHint = document.getElementById("ob-script-hint");
       var obResetScriptBtn = document.getElementById("ob-reset-script-btn");
       var obTbody = document.getElementById("ob-contacts-tbody");
@@ -4258,6 +4296,39 @@
         return String(cfg.default_script || "").trim();
       }
 
+      function isPortfolioSampleType(typeKey) {
+        return /^sample_/.test(String(typeKey || ""));
+      }
+
+      function updateCampaignTypeDetails() {
+        if (!obTypeDetails) return;
+        var typeKey = obTypeSelect.value || "general";
+        var cfg = campaignTypes[typeKey] || {};
+        var label = cfg.label || typeKey;
+        var promptPath = String(cfg.system_instructions_path || "").trim();
+        var isSample = isPortfolioSampleType(typeKey);
+
+        if (!promptPath && !isSample) {
+          obTypeDetails.classList.remove("open");
+          obTypeDetails.innerHTML = "";
+          return;
+        }
+
+        var meta = ['Type <code>' + esc(typeKey) + '</code>'];
+        if (promptPath) meta.push('Prompt <code>' + esc(promptPath) + '</code>');
+        if (isSample) {
+          meta.push('Demo CSV <code>docs/samples/portfolio_outbound_contacts.csv</code>');
+          meta.push('Filter <code>sample_campaign_type=' + esc(typeKey) + '</code>');
+          meta.push('Payloads <code>docs/samples/trigger_call_payloads.json</code>');
+          meta.push('Checklist <code>docs/PORTFOLIO_DEMO_ACCEPTANCE.md</code>');
+        }
+
+        obTypeDetails.innerHTML =
+          '<strong>' + esc(label) + '</strong>' +
+          '<div class="ob-type-meta">' + meta.map(function (item) { return '<span>' + item + '</span>'; }).join('') + '</div>';
+        obTypeDetails.classList.add("open");
+      }
+
       function applyMessageScriptForCampaign(campaign, options) {
         options = options || {};
         var messageEl = document.getElementById("ob-message");
@@ -4329,6 +4400,7 @@
           obTypeSelect.value = firstKey;
         }
         applyMessageScriptForCampaign(campaign);
+        updateCampaignTypeDetails();
 
         var isRunning = campaign && campaign.status === "running";
         var isPaused = campaign && campaign.status === "paused";
@@ -4379,10 +4451,10 @@
           '<td><input type="text" class="ob-c-name" value="' + esc(name) + '" placeholder="Name" /></td>' +
           '<td><input type="text" class="ob-c-phone" value="' + esc(phone) + '" placeholder="+1…" /></td>' +
           '<td><input type="text" class="ob-c-email" value="' + esc(email) + '" placeholder="Email" /></td>' +
-          '<td><input type="text" class="ob-c-offer" value="' + esc(leadOffer) + '" placeholder="Botox Wrinkle Reset" /></td>' +
+          '<td><input type="text" class="ob-c-offer" value="' + esc(leadOffer) + '" placeholder="Consultation, showing, estimate…" /></td>' +
           '<td><input type="text" class="ob-c-timezone" value="' + esc(contactTimezone) + '" placeholder="America/Los_Angeles" /></td>' +
-          '<td><input type="text" class="ob-c-callback" value="' + esc(callbackNumber) + '" placeholder="(832) 230-2418" /></td>' +
-          '<td><input type="text" class="ob-c-extra" value="' + esc(remainingExtra) + '" placeholder=\'{"source":"FB Lead Form"}\' /></td>' +
+          '<td><input type="text" class="ob-c-callback" value="' + esc(callbackNumber) + '" placeholder="+15551234567" /></td>' +
+          '<td><input type="text" class="ob-c-extra" value="' + esc(remainingExtra) + '" placeholder=\'{"source":"Website"}\' /></td>' +
           '<td>' + statusBadge + '</td>' +
           '<td>' + callBtnHtml + stopBtnHtml + resetBtnHtml + '</td>' +
           '<td><button type="button" class="ob-del-btn" title="Remove">&times;</button></td>';
@@ -4526,6 +4598,7 @@
             campaignTypes = data.campaign_types || {};
             var keys = Object.keys(campaignTypes);
             if (keys.length === 0) return;
+            var previousValue = obTypeSelect.value;
             obTypeSelect.innerHTML = "";
             keys.forEach(function (key) {
               var opt = document.createElement("option");
@@ -4533,6 +4606,13 @@
               opt.textContent = campaignTypes[key].label || key;
               obTypeSelect.appendChild(opt);
             });
+            var editorVisible = obEditorView && obEditorView.style.display !== "none";
+            if (currentCampaign && currentCampaign.campaign_type && campaignTypes[currentCampaign.campaign_type]) {
+              obTypeSelect.value = currentCampaign.campaign_type;
+            } else if (editorVisible && previousValue && campaignTypes[previousValue]) {
+              obTypeSelect.value = previousValue;
+            }
+            updateCampaignTypeDetails();
           }).catch(function (err) {
             console.warn("Failed to load campaign types:", err.message || err);
           });
@@ -4565,7 +4645,7 @@
               obListStatus.textContent = "";
               var empty = document.createElement("li");
               empty.className = "ob-empty";
-              empty.innerHTML = "<strong>No campaigns yet</strong><span>Create your first outbound campaign to start calling leads.</span>";
+              empty.innerHTML = "<strong>No campaigns yet</strong><span>Create your first outbound campaign to start calling contacts.</span>";
               obListEl.appendChild(empty);
               return;
             }
@@ -4753,6 +4833,7 @@
 
       // Type change: prefill script when creating a campaign or when draft has no saved script
       obTypeSelect.addEventListener("change", function () {
+        updateCampaignTypeDetails();
         if (!canReplaceMessageScript()) return;
         var draftCampaign = currentCampaign ? Object.assign({}, currentCampaign, { campaign_type: obTypeSelect.value, message_template: "" }) : null;
         applyMessageScriptForCampaign(draftCampaign);

@@ -5,7 +5,7 @@
 
 Production-ready **Python/FastAPI** starter for **inbound and outbound phone AI agents**. [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) bridge live caller audio to the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime); you customize behavior in one markdown prompt and wire side effects through Python tool handlers.
 
-Includes a reference **aesthetic clinic appointment setter** outbound flow (warm Facebook leads → offer routing → Google Calendar booking).
+Built for reusable portfolio and client agents: receptionist, appointment setter, lead qualifier, support front desk, missed-call callback, and outbound campaign flows. Google Calendar appointment booking, call recording, Supabase dashboard records, and outbound campaigns are optional env-gated layers.
 
 **Repository:** [github.com/aymalkhalid/Starter-Agent-InBound-OutBound-Twilio-Speech-Assistant-OpenAi-Realtime-Api-Python](https://github.com/aymalkhalid/Starter-Agent-InBound-OutBound-Twilio-Speech-Assistant-OpenAi-Realtime-Api-Python)
 
@@ -13,7 +13,7 @@ Includes a reference **aesthetic clinic appointment setter** outbound flow (warm
 
 ## Architecture
 
-One shared **WebSocket media bridge** (`/media-stream`) powers **inbound** calls and all **outbound** triggers: campaign bulk dial, dashboard single-contact dial, one-shot lead intake API, and missed-call AI callback. Optional layers—Supabase CRM, Google Calendar booking, human transfer, recording, and transcription—attach via Realtime tools and env config.
+One shared **WebSocket media bridge** (`/media-stream`) powers **inbound** calls and all **outbound** triggers: campaign bulk dial, dashboard single-contact dial, one-shot contact trigger API, and missed-call AI callback. Optional layers—Supabase CRM, Google Calendar booking, human transfer, recording, and transcription—attach via Realtime tools and env config.
 
 <p align="center">
   <a href="./docs/MASTER_DIAGRAM.md">
@@ -64,9 +64,9 @@ One shared **WebSocket media bridge** (`/media-stream`) powers **inbound** calls
 
 - Supabase call-record **dashboard** (`/dashboard`, `/calls`)
 - **Google Calendar** appointment booking
-- **Outbound** campaigns, dashboard single-contact dial, one-shot lead intake API, and missed-call AI callback
-- **Appointment setter** campaign type (`aesthetic_appointment_setter`) with lead-offer routing and outcome tags
-- Timezone-aware **Google Calendar** booking (caller-local display, clinic-time writes)
+- **Outbound** campaigns, dashboard single-contact dial, one-shot contact trigger API, and missed-call AI callback
+- Generic **Appointment Setter** campaign type plus optional portfolio sample campaign types such as `sample_dentist_clinic`, `sample_real_estate`, and `aesthetic_appointment_setter`
+- Timezone-aware **Google Calendar** booking (caller-local display, business-time writes)
 - Call **recording**, playback proxy, and **Whisper** transcription
 - Dashboard **runtime settings** (voice, VAD, booking) via Supabase
 - MCP / external tool registry scaffold (disabled in v1)
@@ -77,7 +77,7 @@ One shared **WebSocket media bridge** (`/media-stream`) powers **inbound** calls
 | --- | --- |
 | `POST /outbound/campaigns/{id}/start` | Dial all pending contacts in a campaign |
 | `POST /outbound/campaigns/{id}/contacts/{contact_id}/call` | Dial one saved contact from the dashboard |
-| `POST /outbound/campaigns/{id}/trigger-call` | External API submits one lead and immediately triggers one call |
+| `POST /outbound/campaigns/{id}/trigger-call` | External API submits one contact payload and immediately triggers one call |
 | `POST /missed-calls/{call_sid}/callback-ai` | AI calls back a missed inbound caller |
 
 ---
@@ -117,7 +117,8 @@ https://YOUR_PUBLIC_HOST/incoming-call
 | Goal | Edit |
 | --- | --- |
 | Default inbound behavior | `prompts/main_system_instructions.md` |
-| Outbound appointment setter | `prompts/aesthetic_appointment_setter.md` (see [APPOINTMENT_SETTER_MVP.md](./docs/APPOINTMENT_SETTER_MVP.md)) |
+| Generic outbound appointment setter | `prompts/generic_appointment_setter.md` |
+| Aesthetic clinic sample flow | `prompts/aesthetic_appointment_setter.md` (see [APPOINTMENT_SETTER_MVP.md](./docs/APPOINTMENT_SETTER_MVP.md)) |
 | Tool schemas + handlers | `services/openai_service.py` |
 | Tone, voice, language, accent, reasoning | `.env` or dashboard Settings (see [CONFIGURATION.md](./docs/CONFIGURATION.md)) |
 | Greeting / farewell phrasing | `system_instructions.py` |
@@ -128,6 +129,8 @@ For client or industry builds, keep behavior as prompt-as-code: use an agentic c
 
 ```bash
 python scripts/preview_system_prompt.py
+python scripts/preview_system_prompt.py --list-samples
+python scripts/portfolio_sample_setup.py dentist
 pytest tests/test_system_instructions.py
 ```
 
@@ -160,7 +163,10 @@ LANGUAGE_SWITCH_POLICY=default_only
 | [MASTER_DIAGRAM.md](./docs/MASTER_DIAGRAM.md) | Master architecture (PNG + Mermaid + step-by-step breakdown) |
 | [COPYABLE_MERMAID.md](./docs/COPYABLE_MERMAID.md) | Copy-paste Mermaid diagrams and ChatGPT prompts for architecture images |
 | [ONBOARDING.md](./docs/ONBOARDING.md) | Clone → live agent checklist |
-| [APPOINTMENT_SETTER_MVP.md](./docs/APPOINTMENT_SETTER_MVP.md) | Outbound clinic appointment-setter scope and call flow |
+| [PORTFOLIO_SAMPLES.md](./docs/PORTFOLIO_SAMPLES.md) | Repeatable portfolio sample workflow across verticals |
+| [SAMPLE_PROMPT_QUALITY.md](./docs/SAMPLE_PROMPT_QUALITY.md) | Shared prompt quality checklist for portfolio verticals |
+| [PORTFOLIO_DEMO_ACCEPTANCE.md](./docs/PORTFOLIO_DEMO_ACCEPTANCE.md) | Evidence checklist before publishing a demo call |
+| [APPOINTMENT_SETTER_MVP.md](./docs/APPOINTMENT_SETTER_MVP.md) | Optional aesthetic-clinic appointment-setter sample scope and call flow |
 | [BOOKING_TIMEZONES.md](./docs/BOOKING_TIMEZONES.md) | Timezone authority for availability, booking, and dashboard links |
 | [PROMPT_AS_CODE.md](./docs/PROMPT_AS_CODE.md) | Code-first prompt customization workflow |
 | [MULTI_CLIENT_WORKFLOW.md](./docs/MULTI_CLIENT_WORKFLOW.md) | Separate deploy per client (real estate, lead qualifier, …) |
@@ -209,13 +215,16 @@ Details: [docs/DEPLOY_CLOUD_RUN.md](./docs/DEPLOY_CLOUD_RUN.md)
 main.py                               # FastAPI routes, Twilio WebSocket bridge
 config.py                             # Env loading, prompt builders
 prompts/main_system_instructions.md   # Default inbound agent behavior
-prompts/aesthetic_appointment_setter.md  # Outbound appointment-setter prompt
+prompts/generic_appointment_setter.md  # Generic outbound appointment-setter prompt
+prompts/aesthetic_appointment_setter.md  # Optional aesthetic clinic sample prompt
+prompts/samples/                       # Portfolio sample prompts for common verticals
+docs/samples/                          # Fake portfolio contacts and trigger-call payloads
 services/openai_service.py            # Realtime session, tools, handlers
 services/call_records_service.py      # App-facing call-record storage facade
 services/outbound_service.py          # Campaign, single-call, and one-shot outbound pipeline
 services/missed_calls_service.py      # Missed-call detection and AI callback support
 services/google_calendar_booking_service.py  # Booking tools + timezone-aware slots
-services/timezone_utils.py            # Caller/clinic timezone helpers
+services/timezone_utils.py            # Caller/business timezone helpers
 services/transcription_service.py     # Twilio MP3 fetch, faster-whisper, transcript enhancement
 services/dynamic_settings.py          # Supabase-backed runtime settings
 services/connection_manager.py        # Twilio ↔ OpenAI WebSocket manager

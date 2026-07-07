@@ -1,0 +1,8 @@
+sample_campaign_type,name,phone,email,lead_offer,contact_timezone,callback_number,source,service_address,notes
+sample_dentist_clinic,Jordan Miller,+15555550101,jordan.miller@example.com,New patient cleaning,America/Los_Angeles,+15555551000,Portfolio demo,,Asked about insurance and first available cleaning.
+sample_medical_office,Casey Nguyen,+15555550102,casey.nguyen@example.com,Routine office visit,America/Chicago,+15555551001,Portfolio demo,,Needs a non-emergency appointment and prefers mornings.
+sample_real_estate,Taylor Brooks,+15555550103,taylor.brooks@example.com,Showing request for 123 Maple St,America/New_York,+15555551002,Portfolio demo,123 Maple St,Interested in a weekend showing and buyer consultation.
+sample_home_services,Riley Patel,+15555550104,riley.patel@example.com,HVAC estimate,America/Phoenix,+15555551003,Portfolio demo,456 Oak Ave,AC not cooling well; wants an estimate visit.
+sample_ecommerce_support,Morgan Lee,+15555550105,morgan.lee@example.com,Damaged item support,America/Denver,+15555551004,Portfolio demo,,Order 10045 arrived damaged and needs follow-up.
+sample_b2b_qualifier,Avery Smith,+15555550106,avery.smith@example.com,Discovery call for sales automation,America/Los_Angeles,+15555551005,Portfolio demo,,Operations manager evaluating AI phone automation this quarter.
+sample_general_receptionist,Sam Rivera,+15555550107,sam.rivera@example.com,General callback request,America/Los_Angeles,+15555551006,Portfolio demo,,Wants a callback about appointment availability.

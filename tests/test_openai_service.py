@@ -917,7 +917,7 @@ def test_booking_tool_descriptions_require_exact_booking_confirmation(monkeypatc
     assert "caller_timezone" in by_name["edit_booking"]["parameters"]["properties"]
     assert "offer caller-local time first" in by_name["get_availability"]["description"]
     assert "caller-local time first" in by_name["book_appointment"]["description"]
-    assert "never call the clinic timezone 'my time'" in by_name["book_appointment"]["description"]
+    assert "never call the business appointment timezone 'my time'" in by_name["book_appointment"]["description"]
 
 
 def test_book_appointment_writes_on_first_call_without_confirm_flag(monkeypatch):

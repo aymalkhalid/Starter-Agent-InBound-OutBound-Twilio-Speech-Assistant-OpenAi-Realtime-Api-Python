@@ -5,18 +5,45 @@ Python avoids a second config format in the clean starter.
 """
 from __future__ import annotations
 
+from portfolio_samples import iter_samples
 
-DEFAULT_CAMPAIGN_TYPES = {
+
+APPOINTMENT_CONTACT_FIELDS = [
+    {"name": "lead_offer", "label": "Interest / Offer", "required": False},
+    {"name": "contact_timezone", "label": "Contact Timezone", "required": False},
+    {"name": "callback_number", "label": "Callback Number", "required": False},
+]
+
+
+def _portfolio_sample_campaign_types() -> dict[str, dict]:
+    return {
+        sample.campaign_type: {
+            "label": sample.campaign_label,
+            "system_instructions_path": sample.prompt_path,
+            "default_script": "",
+            "custom_fields": APPOINTMENT_CONTACT_FIELDS,
+        }
+        for sample in iter_samples()
+    }
+
+
+_CORE_CAMPAIGN_TYPES = {
+    "appointment_setter": {
+        "label": "Appointment Setter",
+        "system_instructions_path": "prompts/generic_appointment_setter.md",
+        "default_script": "",
+        "custom_fields": APPOINTMENT_CONTACT_FIELDS,
+    },
     "aesthetic_appointment_setter": {
-        "label": "Aesthetic Appointment Setter",
+        "label": "Aesthetic Appointment Setter (Sample)",
         "system_instructions_path": "prompts/aesthetic_appointment_setter.md",
         "default_script": "",
-        "custom_fields": [
-            {"name": "lead_offer", "label": "Lead Offer / Latest Opt-In", "required": False},
-            {"name": "contact_timezone", "label": "Contact Timezone", "required": False},
-            {"name": "callback_number", "label": "Callback Number", "required": False},
-        ],
+        "custom_fields": APPOINTMENT_CONTACT_FIELDS,
     },
+}
+
+
+_STANDARD_CAMPAIGN_TYPES = {
     "promo": {
         "label": "Promotional",
         "default_script": """You are {agent_name}, calling on behalf of {company_name}. You are reaching out to {contact_name} about a special promotion.
@@ -108,4 +135,11 @@ Rules:
 - If you reach voicemail, leave a short message and then end the call with end_call.""",
         "custom_fields": [],
     },
+}
+
+
+DEFAULT_CAMPAIGN_TYPES = {
+    **_CORE_CAMPAIGN_TYPES,
+    **_portfolio_sample_campaign_types(),
+    **_STANDARD_CAMPAIGN_TYPES,
 }

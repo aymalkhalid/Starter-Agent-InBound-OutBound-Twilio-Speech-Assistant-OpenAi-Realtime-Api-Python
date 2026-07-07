@@ -691,8 +691,10 @@ rebuild_system_message()
 
 
 # Apply dynamic settings overrides from Supabase (if any). See docs/CONFIGURATION.md.
-try:
-    from services.dynamic_settings import load_overrides_sync, apply_overrides_to_config
-    apply_overrides_to_config(load_overrides_sync())
-except Exception:
-    pass
+# Prompt preview is intentionally local/offline and opts out before importing config.
+if os.getenv("PROMPT_PREVIEW_SKIP_DYNAMIC_SETTINGS", "").strip().lower() not in ("1", "true", "yes"):
+    try:
+        from services.dynamic_settings import load_overrides_sync, apply_overrides_to_config
+        apply_overrides_to_config(load_overrides_sync())
+    except Exception:
+        pass

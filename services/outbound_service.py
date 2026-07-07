@@ -125,7 +125,7 @@ def _first_custom_field(custom_fields: dict[str, Any], aliases: tuple[str, ...])
 
 
 def get_contact_timezone_from_contact(contact: dict[str, Any] | None) -> str:
-    """Return lead-provided contact timezone without falling back to business timezone."""
+    """Return contact-provided timezone without falling back to business timezone."""
     if not isinstance(contact, dict):
         return ""
     top_level = _first_custom_field(contact, ("contact_timezone", "timezone", "time_zone", "tz"))
@@ -259,13 +259,14 @@ def _first_lead_payload_field(payload: dict[str, Any], aliases: tuple[str, ...])
     return ""
 
 
-def build_contact_from_lead_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def build_contact_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Normalize one external lead webhook payload into an outbound contact row.
+    Normalize one external contact/lead webhook payload into an outbound contact row.
 
     This accepts direct JSON from tools such as GHL, n8n, Zapier, or Insomnia.
     Common aliases are converted into the starter's canonical contact fields and
-    appointment-setter custom fields.
+    appointment-setter custom fields. Lead-shaped payloads remain supported
+    because many CRMs still use lead terminology.
     """
     if not isinstance(payload, dict):
         return {"name": "", "phone": "", "email": "", "custom_fields": {}}
@@ -345,13 +346,18 @@ def build_contact_from_lead_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_outbound_lead_context(
+def build_contact_from_lead_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Backward-compatible alias for older lead-named integrations."""
+    return build_contact_from_payload(payload)
+
+
+def _build_outbound_contact_context(
     *,
     campaign: dict[str, Any],
     contact: dict[str, Any],
     custom_fields: dict[str, Any],
 ) -> dict[str, str]:
-    """Normalize outbound lead fields used by reusable prompts and templates."""
+    """Normalize outbound contact fields used by reusable prompts and templates."""
     raw_name = _clean_prompt_value(contact.get("name"))
     custom_name = _first_custom_field(
         custom_fields,
@@ -425,8 +431,8 @@ def _build_outbound_lead_context(
     }
 
 
-def _format_outbound_lead_context(context: dict[str, str]) -> str:
-    """Render normalized lead context as a compact system-prompt block."""
+def _format_outbound_contact_context(context: dict[str, str]) -> str:
+    """Render normalized contact context as a compact system-prompt block."""
     ordered_keys = (
         "contact_name",
         "contact_first_name",
@@ -441,7 +447,7 @@ def _format_outbound_lead_context(context: dict[str, str]) -> str:
         "source_campaign",
     )
     lines = [
-        "# Outbound Lead Context",
+        "# Outbound Contact Context",
         "Use this context silently. Do not read field names aloud.",
     ]
     for key in ordered_keys:
@@ -867,7 +873,7 @@ def reset_contact_to_pending_sync(contact_id: str) -> bool:
 def build_outbound_system_message(campaign_id: str, contact_id: str) -> str | None:
     """
     Fetch campaign + contact from Supabase and render the system message with
-    normalized lead context. Returns None only when campaign/contact data cannot
+    normalized contact context. Returns None only when campaign/contact data cannot
     be loaded.
     """
     client = _get_supabase_client()
@@ -902,25 +908,25 @@ def build_outbound_system_message(campaign_id: str, contact_id: str) -> str | No
     custom_fields = contact.get("custom_fields") or {}
     if not isinstance(custom_fields, dict):
         custom_fields = {}
-    lead_context = _build_outbound_lead_context(
+    contact_context = _build_outbound_contact_context(
         campaign=campaign,
         contact=contact,
         custom_fields=custom_fields,
     )
     replacements = {
-        "contact_name": lead_context.get("contact_name") or "there",
+        "contact_name": contact_context.get("contact_name") or "there",
         "company_name": os.getenv("COMPANY_NAME") or getattr(Config, "COMPANY_NAME", "our company"),
         "agent_name": agent_name,
         "receptionist_name": agent_name,
     }
     replacements.update(custom_fields)
-    replacements.update({key: value for key, value in lead_context.items() if value})
+    replacements.update({key: value for key, value in contact_context.items() if value})
 
     result = template
     for key, value in replacements.items():
         result = result.replace("{" + key + "}", str(value))
 
-    result = result.rstrip() + "\n\n" + _format_outbound_lead_context(lead_context)
+    result = result.rstrip() + "\n\n" + _format_outbound_contact_context(contact_context)
 
     return _append_language_and_accent_policy(result)
 

@@ -818,7 +818,7 @@ async def add_outbound_contacts(
 
 
 @app.post("/outbound/campaigns/{campaign_id}/trigger-call", response_class=JSONResponse)
-async def trigger_outbound_call_from_lead(
+async def trigger_outbound_call_from_contact(
     request: Request,
     campaign_id: str,
     body: dict = Body(...),
@@ -826,9 +826,9 @@ async def trigger_outbound_call_from_lead(
     x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
 ):
     """
-    One-shot lead intake API.
+    One-shot outbound contact API.
 
-    External systems can POST one lead to a campaign; the lead is inserted as an
+    External systems can POST one contact or lead to a campaign; the payload is inserted as an
     outbound contact and called immediately using that campaign's prompt.
     """
     _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
@@ -836,7 +836,7 @@ async def trigger_outbound_call_from_lead(
 
     from services.outbound_service import (
         add_contacts_sync,
-        build_contact_from_lead_payload,
+        build_contact_from_payload,
         get_campaign_sync,
     )
 
@@ -844,9 +844,9 @@ async def trigger_outbound_call_from_lead(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    contact = build_contact_from_lead_payload(body)
+    contact = build_contact_from_payload(body)
     if not (contact.get("phone") or "").strip():
-        raise HTTPException(status_code=400, detail="Lead phone number is required")
+        raise HTTPException(status_code=400, detail="Contact phone number is required")
 
     inserted = await asyncio.to_thread(add_contacts_sync, campaign_id, [contact])
     if not inserted:

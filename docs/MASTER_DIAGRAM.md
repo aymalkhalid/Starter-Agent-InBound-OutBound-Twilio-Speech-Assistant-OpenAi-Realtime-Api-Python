@@ -27,7 +27,7 @@ Outbound is not only campaigns. Four triggers share the same dial → TwiML → 
 | --- | --- | --- |
 | **① Campaign bulk dial** | `POST /outbound/campaigns/{id}/start` | `run_campaign()` dials all `pending` contacts with concurrency control |
 | **② Single contact dial** | `POST /outbound/campaigns/{id}/contacts/{id}/call` | Dials one contact manually from dashboard |
-| **③ One-shot lead intake API** | `POST /outbound/campaigns/{id}/trigger-call` | External systems such as GHL/n8n post one lead; app inserts the contact and dials immediately |
+| **③ One-shot contact trigger API** | `POST /outbound/campaigns/{id}/trigger-call` | External systems such as GHL/n8n post one contact/lead; app inserts the contact and dials immediately |
 | **④ Missed-call AI callback** | `POST /missed-calls/{call_sid}/callback-ai` | Creates/reuses hidden campaign `__missed_call_callbacks__`, adds contact, then dials |
 
 **Shared outbound pipeline (all four):**
@@ -44,7 +44,7 @@ Dashboard/API trigger
   → POST /outbound-call-status → update Supabase contact status
 ```
 
-Campaign type presets (`services/outbound_campaign_types.py`): `aesthetic_appointment_setter`, `promo`, `appointment_confirmation`, `payment_reminder`, `follow_up`, `general`, `missed_call_callback`.
+Campaign type presets (`services/outbound_campaign_types.py`): `appointment_setter`, `sample_*` portfolio presets, `aesthetic_appointment_setter` sample, `promo`, `appointment_confirmation`, `payment_reminder`, `follow_up`, `general`, `missed_call_callback`.
 
 ### Step 3 — Inbound path
 
@@ -179,7 +179,7 @@ flowchart TB
             direction TB
             T_CAMP["① Campaign bulk<br/>POST /outbound/campaigns/{id}/start<br/>→ run_campaign()"]
             T_ONE["② Single contact<br/>POST …/contacts/{id}/call"]
-            T_API["③ One-shot lead intake API<br/>POST /outbound/campaigns/{id}/trigger-call<br/>→ add contact + dial now"]
+            T_API["③ One-shot contact trigger API<br/>POST /outbound/campaigns/{id}/trigger-call<br/>→ add contact + dial now"]
             T_MISS["④ Missed-call AI callback<br/>POST /missed-calls/{sid}/callback-ai<br/>→ __missed_call_callbacks__ campaign"]
         end
     end
@@ -433,7 +433,7 @@ Render **one zone per image** from the Master diagram for best results.
 
 **Full poster prompt:**
 
-> Technical architecture poster for a Twilio + OpenAI voice agent. Top row: Inbound caller and 4 outbound triggers: campaign bulk, single contact, one-shot lead API, missed-call callback. Center: shared WebSocket media bridge. Bottom left: Supabase CRM. Bottom right: Google Calendar booking. Side: Dashboard operator. Color code: blue=inbound, green=outbound, orange=core, yellow=CRM, pink=calendar. Clean vector, 16:9.
+> Technical architecture poster for a Twilio + OpenAI voice agent. Top row: Inbound caller and 4 outbound triggers: campaign bulk, single contact, one-shot contact API, missed-call callback. Center: shared WebSocket media bridge. Bottom left: Supabase CRM. Bottom right: Google Calendar booking. Side: Dashboard operator. Color code: blue=inbound, green=outbound, orange=core, yellow=CRM, pink=calendar. Clean vector, 16:9.
 
 ---
 
@@ -444,7 +444,7 @@ The PNG poster (`images/MasterArchitectureDiagram.png`) matches the architecture
 | Topic | Accurate in diagram | Caveat |
 | --- | --- | --- |
 | Shared `/media-stream` core | Yes | Same bridge for inbound and all outbound triggers |
-| Outbound trigger ③ (one-shot lead API) | Yes | Requires `OUTBOUND_ENABLED=true` + Twilio + Supabase + public `OUTBOUND_BASE_URL` |
+| Outbound trigger ③ (one-shot contact API) | Yes | Requires `OUTBOUND_ENABLED=true` + Twilio + Supabase + public `OUTBOUND_BASE_URL` |
 | Outbound trigger ④ (missed-call callback) | Yes | Does **not** require `OUTBOUND_ENABLED`; **does** require Twilio creds + Supabase + public `OUTBOUND_BASE_URL` |
 | Outbound triggers ①② | Yes | Require `OUTBOUND_ENABLED=true` + Twilio + Supabase |
 | Realtime coroutines | Yes | `receive_from_twilio()`, `receive_from_openai()`, `renew_openai_session()` |

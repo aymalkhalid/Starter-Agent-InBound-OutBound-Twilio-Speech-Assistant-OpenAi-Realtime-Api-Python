@@ -329,7 +329,7 @@ Requires `OUTBOUND_ENABLED=true` with Twilio + Supabase.
 ```mermaid
 sequenceDiagram
     participant D as Dashboard
-    participant X as External lead source
+    participant X as External contact source
     participant F as FastAPI
     participant OBS as outbound_service
     participant SB as Supabase
@@ -344,9 +344,9 @@ sequenceDiagram
     else Dashboard single contact dial
         D->>F: POST /outbound/campaigns/{id}/contacts/{id}/call
         F->>OBS: Load campaign + contact
-    else One-shot lead intake API
+    else One-shot contact trigger API
         X->>F: POST /outbound/campaigns/{id}/trigger-call
-        F->>OBS: build_contact_from_lead_payload()
+        F->>OBS: build_contact_from_payload()
         OBS->>SB: Insert outbound contact
     end
 
@@ -505,7 +505,7 @@ sequenceDiagram
 
 Timezone behavior: `Config.TIMEZONE` is the appointment authority. Caller
 timezone is display context only and should be spoken caller-local first when it
-differs from clinic time. Dashboard Booking rows render from `confirmed_slot`,
+differs from business appointment time. Dashboard Booking rows render from `confirmed_slot`,
 `calendar_event_link`, and `metadata.appointments[]`.
 
 **Cache:** `prewarm_availability_cache()` runs on stream start; mutations invalidate cache so the next `get_availability` reflects updated busy times.

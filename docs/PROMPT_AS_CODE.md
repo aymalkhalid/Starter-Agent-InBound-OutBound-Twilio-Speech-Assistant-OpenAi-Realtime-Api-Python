@@ -27,6 +27,16 @@ Do not add industry YAML files, prompt-profile tables, prompt-version tables, or
 python scripts/preview_system_prompt.py
 ```
 
+For portfolio samples:
+
+```bash
+python scripts/preview_system_prompt.py --list-samples
+python scripts/preview_system_prompt.py --sample dentist --with-booking-tools --with-call-records --with-human-transfer --company-name "Bright Smile Dental" --agent-name "Ava"
+```
+
+Prompt preview is local/offline by default. It does not load Supabase dashboard
+settings while rendering, even if your `.env` is configured for Supabase.
+
 7. Run focused verification:
 
 ```bash
@@ -54,7 +64,7 @@ These are prompt-edit directions for a coding agent, not runtime profile files.
 
 | Industry | Prompt patch direction |
 | --- | --- |
-| Real estate | Change role to showing/lead intake assistant; collect buyer/seller intent, property interest, budget range, timeline, preferred areas, and desired showing time. |
+| Real estate | Change role to showing and contact intake assistant; collect buyer/seller intent, property interest, budget range, timeline, preferred areas, and desired showing time. |
 | Healthcare intake | Keep medical-safety boundaries explicit; collect symptom summary, urgency, callback details, preferred appointment time, and route emergencies to human/urgent care wording. |
 | Home services | Collect service type, address, urgency, access notes, callback number, and whether the issue is emergency/same-day/routine. |
 | Legal intake | Avoid legal advice; collect matter type, jurisdiction/location, opposing party if needed, urgency, and callback details before saving or transferring. |

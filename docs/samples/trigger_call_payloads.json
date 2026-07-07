@@ -1,0 +1,76 @@
+{
+  "sample_dentist_clinic": {
+    "name": "Jordan Miller",
+    "phone": "+15555550101",
+    "email": "jordan.miller@example.com",
+    "lead_offer": "New patient cleaning",
+    "contact_timezone": "America/Los_Angeles",
+    "callback_number": "+15555551000",
+    "source": "Portfolio demo",
+    "notes": "Asked about insurance and first available cleaning."
+  },
+  "sample_medical_office": {
+    "name": "Casey Nguyen",
+    "phone": "+15555550102",
+    "email": "casey.nguyen@example.com",
+    "lead_offer": "Routine office visit",
+    "contact_timezone": "America/Chicago",
+    "callback_number": "+15555551001",
+    "source": "Portfolio demo",
+    "notes": "Needs a non-emergency appointment and prefers mornings."
+  },
+  "sample_real_estate": {
+    "name": "Taylor Brooks",
+    "phone": "+15555550103",
+    "email": "taylor.brooks@example.com",
+    "lead_offer": "Showing request for 123 Maple St",
+    "contact_timezone": "America/New_York",
+    "callback_number": "+15555551002",
+    "source": "Portfolio demo",
+    "service_address": "123 Maple St",
+    "notes": "Interested in a weekend showing and buyer consultation."
+  },
+  "sample_home_services": {
+    "name": "Riley Patel",
+    "phone": "+15555550104",
+    "email": "riley.patel@example.com",
+    "lead_offer": "HVAC estimate",
+    "contact_timezone": "America/Phoenix",
+    "callback_number": "+15555551003",
+    "source": "Portfolio demo",
+    "service_address": "456 Oak Ave",
+    "notes": "AC not cooling well; wants an estimate visit."
+  },
+  "sample_ecommerce_support": {
+    "name": "Morgan Lee",
+    "phone": "+15555550105",
+    "email": "morgan.lee@example.com",
+    "lead_offer": "Damaged item support",
+    "contact_timezone": "America/Denver",
+    "callback_number": "+15555551004",
+    "source": "Portfolio demo",
+    "order_number": "10045",
+    "notes": "Order arrived damaged and needs follow-up."
+  },
+  "sample_b2b_qualifier": {
+    "name": "Avery Smith",
+    "phone": "+15555550106",
+    "email": "avery.smith@example.com",
+    "lead_offer": "Discovery call for sales automation",
+    "contact_timezone": "America/Los_Angeles",
+    "callback_number": "+15555551005",
+    "source": "Portfolio demo",
+    "company": "Example Operations Co",
+    "notes": "Operations manager evaluating AI phone automation this quarter."
+  },
+  "sample_general_receptionist": {
+    "name": "Sam Rivera",
+    "phone": "+15555550107",
+    "email": "sam.rivera@example.com",
+    "lead_offer": "General callback request",
+    "contact_timezone": "America/Los_Angeles",
+    "callback_number": "+15555551006",
+    "source": "Portfolio demo",
+    "notes": "Wants a callback about appointment availability."
+  }
+}

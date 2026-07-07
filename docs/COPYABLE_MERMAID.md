@@ -20,7 +20,8 @@ Important accuracy rules:
   session.update, not directly from /incoming-call or /outbound-call-twiml.
 - Show exactly one OpenAI Realtime instructions string per call:
   inbound uses Config.SYSTEM_MESSAGE; outbound uses build_outbound_system_message().
-- Label prompts/aesthetic_appointment_setter.md as an outbound template input,
+- Label prompts/generic_appointment_setter.md as the generic appointment-setter template input.
+- Label prompts/aesthetic_appointment_setter.md as an optional sample template input,
   not a separate prompt sent directly to OpenAI.
 - Show dynamic_settings.py updating shared Config values for both inbound and outbound.
 - Show /outbound-call-status as the outbound completion callback that updates
@@ -44,7 +45,7 @@ flowchart TB
         Caller["Inbound caller"]
         Callee["Outbound callee"]
         Operator["Dashboard operator"]
-        ExternalLead["External lead source<br/>GHL / n8n / API / Insomnia"]
+        ExternalContact["External contact source<br/>GHL / n8n / API / Insomnia"]
         Human["Human transfer target"]
     end
 
@@ -74,8 +75,9 @@ flowchart TB
     subgraph Prompting["Prompt paths"]
         ConfigState["config.py shared Config<br/>env + dashboard overrides"]
         InboundPrompt["Inbound instructions<br/>prompts/main_system_instructions.md<br/>system_instructions.py -> Config.SYSTEM_MESSAGE"]
-        OutboundPrompt["Outbound instructions<br/>outbound_service.build_outbound_system_message()<br/>campaign template + contact data + lead context"]
-        AppointmentPrompt["prompts/aesthetic_appointment_setter.md<br/>template input for campaign_type=aesthetic_appointment_setter"]
+        OutboundPrompt["Outbound instructions<br/>outbound_service.build_outbound_system_message()<br/>campaign template + contact data + contact context"]
+        AppointmentPrompt["prompts/generic_appointment_setter.md<br/>template input for campaign_type=appointment_setter"]
+        AestheticPrompt["prompts/aesthetic_appointment_setter.md<br/>optional sample template"]
         SessionUpdate["OpenAIService session.update<br/>one instructions string per call"]
     end
 
@@ -115,7 +117,7 @@ flowchart TB
 
     Operator --> OutboundStart
     Operator --> SingleDial
-    ExternalLead --> TriggerCall
+    ExternalContact --> TriggerCall
     Operator --> MissedCallback
     OutboundStart --> OutboundService
     SingleDial --> OutboundService
@@ -143,6 +145,7 @@ flowchart TB
     MediaStream -.->|"inbound: system_message_override=None"| InboundPrompt
     MediaStream -.->|"outbound: campaign_id + contact_id"| OutboundPrompt
     AppointmentPrompt -.->|"template input only"| OutboundPrompt
+    AestheticPrompt -.->|"sample template input only"| OutboundPrompt
     InboundPrompt --> SessionUpdate
     OutboundPrompt --> SessionUpdate
     SessionUpdate --> OpenAIService
@@ -174,7 +177,7 @@ flowchart TB
     classDef post fill:#ede9fe,stroke:#6d28d9,stroke-width:2px
 
     class Caller,Incoming,InboundPrompt inbound
-    class Callee,OutboundStart,SingleDial,TriggerCall,MissedCallback,OutboundTwiML,OutboundStatus,OutboundService,MissedCalls,OutboundPrompt,AppointmentPrompt outbound
+    class Callee,ExternalContact,OutboundStart,SingleDial,TriggerCall,MissedCallback,OutboundTwiML,OutboundStatus,OutboundService,MissedCalls,OutboundPrompt,AppointmentPrompt,AestheticPrompt outbound
     class MediaStream,TwilioService,ConnectionManager,AudioService,OpenAIService,OpenAIRealtime,CoreTools,RecordTool,TransferTool,BookingTools,SessionUpdate core
     class Supabase,CallRecords,WebhookAdapter,DynamicSettings,ExternalCRM,CallsAPI,SettingsAPI,ConfigState data
     class BookingService,GoogleCalendar calendar
@@ -191,7 +194,7 @@ flowchart LR
         UC1["Inbound AI receptionist<br/>Caller dials Twilio number"]
         UC2["Outbound campaign<br/>Bulk dial pending contacts"]
         UC3["Dashboard single dial<br/>Call one contact now"]
-        UC4["One-shot lead API<br/>GHL / n8n POSTs one lead"]
+        UC4["One-shot contact API<br/>GHL / n8n POSTs one contact"]
         UC5["Missed-call AI callback<br/>Call back an inbound missed call"]
         UC6["Post-call review<br/>Recording, transcript, enhancement"]
     end
@@ -270,10 +273,11 @@ sequenceDiagram
 
 ---
 
-## 4. One-Shot Outbound Lead API Sequence
+## 4. One-Shot Outbound Contact API Sequence
 
-Use this for GHL, n8n, Insomnia, or any API client that wants to submit one lead
-and trigger one outbound call against an existing campaign.
+Use this for GHL, n8n, Insomnia, or any API client that wants to submit one contact
+payload and trigger one outbound call against an existing campaign. Lead-shaped
+CRM payloads are still accepted for compatibility.
 
 ```mermaid
 sequenceDiagram
@@ -283,24 +287,24 @@ sequenceDiagram
     participant OBS as outbound_service
     participant SB as Supabase
     participant TW as Twilio
-    participant Lead as Lead phone
+    participant Contact as Contact phone
     participant MS as WS /media-stream
     participant OAI as OpenAI Realtime
 
-    Source->>API: POST /outbound/campaigns/{campaign_id}/trigger-call<br/>lead JSON + dashboard auth
-    API->>OBS: build_contact_from_lead_payload(body)
+    Source->>API: POST /outbound/campaigns/{campaign_id}/trigger-call<br/>contact JSON + dashboard auth
+    API->>OBS: build_contact_from_payload(body)
     API->>OBS: add_contacts_sync(campaign_id, contact)
     OBS->>SB: Insert outbound_contacts row
     API->>OBS: _dial_outbound_contact_now(campaign_id, contact_id)
-    OBS->>TW: create_outbound_call(to=lead.phone)
-    TW->>Lead: Ring phone
-    Lead-->>TW: Answer
+    OBS->>TW: create_outbound_call(to=contact.phone)
+    TW->>Contact: Ring phone
+    Contact-->>TW: Answer
     TW->>API: GET /outbound-call-twiml/{campaign_id}?contact_id=...
     API-->>TW: TwiML Connect Stream + outbound parameters
     TW->>MS: WebSocket connect
     MS->>OBS: build_outbound_system_message(campaign_id, contact_id)
     OBS->>SB: Fetch campaign, contact, custom_fields
-    MS->>OAI: session.update with campaign prompt + lead data
+    MS->>OAI: session.update with campaign prompt + contact context
     MS->>OAI: send_initial_greeting(is_outbound=true)
     TW->>API: POST /outbound-call-status
     API->>OBS: update_contact_status_sync
@@ -308,28 +312,28 @@ sequenceDiagram
 
 ---
 
-## 5. Aesthetic Appointment Setter Booking Sequence
+## 5. Appointment Setter Booking Sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Lead
+    participant Contact
     participant AI as OpenAI Realtime Agent
     participant OS as OpenAIService
     participant Cal as google_calendar_booking_service
     participant GCal as Google Calendar
     participant CRM as call_records_service
 
-    AI->>Lead: Opens with offer-specific context from lead_offer/contact_latest_optin
-    Lead->>AI: Interested in appointment
+    AI->>Contact: Opens with interest/offer context from lead_offer/contact_latest_optin
+    Contact->>AI: Interested in appointment
     AI->>OS: get_availability(days_ahead, for_date?, caller_timezone?)
     OS->>Cal: booking_get_availability()
     Cal->>GCal: freeBusy query in business timezone
     GCal-->>Cal: Busy windows
-    Cal-->>OS: Available slots with clinic/caller display
+    Cal-->>OS: Available slots with business/caller display
     OS-->>AI: Tool result
-    AI->>Lead: Offers two available times
-    Lead->>AI: Chooses a slot
+    AI->>Contact: Offers two available times
+    Contact->>AI: Chooses a slot
     AI->>OS: book_appointment(slot_start_iso, contact details)
     OS->>Cal: booking_book_appointment()
     Cal->>GCal: Create calendar event
@@ -394,8 +398,8 @@ Use these prompts with the Mermaid blocks above:
 | Use case | Prompt |
 | --- | --- |
 | Master architecture poster | "Render the master flow as a 16:9 technical architecture poster. Emphasize shared `WS /media-stream`, one OpenAI Realtime `session.update` instructions string per call, inbound vs outbound prompt selection, four outbound triggers, Supabase, Google Calendar, and post-call artifacts." |
-| Outbound API demo | "Render the one-shot outbound sequence for GHL/n8n lead intake. Highlight POST `/trigger-call`, Supabase contact insert, Twilio dial, and Realtime prompt construction." |
-| Appointment setter demo | "Render the aesthetic appointment setter booking flow. Highlight lead offer, availability lookup, two slot choices, Google Calendar booking, and call-record update." |
+| Outbound API demo | "Render the one-shot outbound sequence for GHL/n8n contact intake. Highlight POST `/trigger-call`, Supabase contact insert, Twilio dial, and Realtime prompt construction." |
+| Appointment setter demo | "Render the generic appointment setter booking flow. Highlight interest or offer context, availability lookup, two slot choices, Google Calendar booking, and call-record update." |
 | Call-record lifecycle | "Render the call-record lifecycle as staged enrichment: live summary, recording link, playback, Whisper transcript, OpenAI enhancement, manual notes/status." |
 | Executive overview | "Use the use-case flow diagram. Make it simple and business-readable: inbound, outbound, booking, dashboard, transcript review." |
 
@@ -431,4 +435,3 @@ Visual style:
   realtime core, storage, calendar, and post-call processing.
 - Keep labels readable. Avoid adding decorative icons that obscure the flow.
 ```
-

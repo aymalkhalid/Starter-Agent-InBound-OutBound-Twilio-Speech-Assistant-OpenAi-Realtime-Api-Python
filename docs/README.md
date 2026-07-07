@@ -7,7 +7,10 @@ Docs for the Twilio + OpenAI Realtime starter. Agent behavior is defined in `pro
 - [Onboarding](./ONBOARDING.md) — one-page clone → live agent checklist
 - [Prompt-as-code](./PROMPT_AS_CODE.md) — customize industries with code edits, prompt preview, and tests
 - [Multi-client workflow](./MULTI_CLIENT_WORKFLOW.md) — build a separate agent per client (real estate, lead qualifier, etc.)
-- [Aesthetic clinic appointment setter MVP](./APPOINTMENT_SETTER_MVP.md) — reusable outbound appointment-setter scope and implementation gates
+- [Portfolio sample workflow](./PORTFOLIO_SAMPLES.md) — build repeatable demo agents across healthcare, real estate, home services, ecommerce, and B2B
+- [Sample prompt quality](./SAMPLE_PROMPT_QUALITY.md) — shared prompt rules for portfolio verticals
+- [Portfolio demo acceptance](./PORTFOLIO_DEMO_ACCEPTANCE.md) — verify call records, bookings, recordings, transcripts, and outbound status before publishing demos
+- [Aesthetic clinic appointment setter sample](./APPOINTMENT_SETTER_MVP.md) — optional industry sample built on the generic appointment-setter pattern
 - [Booking timezones](./BOOKING_TIMEZONES.md) — appointment timezone authority, caller-local display, Google Calendar writes, dashboard booking links
 - [Client discovery template](./templates/CLIENT_DISCOVERY.md) — fillable kickoff form per new client
 - [Architecture](./ARCHITECTURE.md)

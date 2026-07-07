@@ -22,12 +22,12 @@ and dashboard call-record booking fields work together.
 2. The outbound call context passes that timezone into the Realtime session.
 3. `get_availability` receives caller timezone context and returns:
    - UTC `start` / `end`
-   - appointment display in clinic time
+   - appointment display in business time
    - caller-local display when different
    - `appointment_timezone`
    - `caller_timezone`
 4. The AI offers caller-local time first when it differs:
-   `For you, Tuesday at 9 AM Mountain, which is 8 AM Pacific at the clinic.`
+   `For you, Tuesday at 9 AM Mountain, which is 8 AM Pacific business time.`
 5. `book_appointment` books the exact returned `slot_start_iso`.
 6. Google Calendar stores the event in appointment timezone and includes caller
    timezone context in the event details.
@@ -42,17 +42,17 @@ and dashboard call-record booking fields work together.
 
 ## Spoken Wording
 
-When caller and clinic time differ, speak caller-local time first and clinic
+When caller and business appointment time differ, speak caller-local time first and business
 time second:
 
 ```text
-For you, Monday at 12 PM Eastern, which is 9 AM Pacific at the clinic.
+For you, Monday at 12 PM Eastern, which is 9 AM Pacific business time.
 ```
 
-Use `clinic time`, `business time`, or `[timezone] at the clinic`. Do not say
+Use `business time`, `appointment time`, or the named timezone. Do not say
 `my time`.
 
-When caller and clinic time are the same, avoid over-explaining:
+When caller and business appointment time are the same, avoid over-explaining:
 
 ```text
 I have Monday at 1 PM Pacific Time.
@@ -60,7 +60,7 @@ I have Monday at 1 PM Pacific Time.
 
 ## Manual Test Matrix
 
-Use `TIMEZONE=America/Los_Angeles` for the clinic calendar unless testing
+Use `TIMEZONE=America/Los_Angeles` for the business calendar unless testing
 another business timezone.
 
 | Caller timezone | Test date | Expected behavior |
@@ -80,14 +80,14 @@ Example Phoenix winter conversion:
 Expected spoken offer:
 
 ```text
-For you, Tuesday, December 1 at 9 AM Mountain, which is 8 AM Pacific at the clinic.
+For you, Tuesday, December 1 at 9 AM Mountain, which is 8 AM Pacific business time.
 ```
 
 ## Dashboard Verification
 
 After a successful booking, verify:
 
-1. Google Calendar event exists at the clinic time.
+1. Google Calendar event exists at the business appointment time.
 2. Event details include appointment time zone, caller local time, caller
    timezone, and caller timezone source.
 3. Dashboard call-record details show a Booking row.

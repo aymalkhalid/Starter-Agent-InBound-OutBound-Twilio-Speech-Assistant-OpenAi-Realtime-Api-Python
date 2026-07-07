@@ -25,6 +25,8 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROOT = Path(__file__).resolve().parents[1]
 
+from portfolio_samples import PORTFOLIO_SAMPLE_CAMPAIGN_TYPES
+
 
 # =========================================================================
 # 1. Campaign type preset loading
@@ -40,7 +42,15 @@ def test_campaign_types_load():
     types = get_campaign_types()
     assert isinstance(types, dict), "get_campaign_types must return a dict"
     assert len(types) >= 4, f"Expected at least 4 campaign types, got {len(types)}: {list(types.keys())}"
-    for key in ("aesthetic_appointment_setter", "promo", "appointment_confirmation", "payment_reminder", "general"):
+    for key in (
+        "appointment_setter",
+        "aesthetic_appointment_setter",
+        "promo",
+        "appointment_confirmation",
+        "payment_reminder",
+        "general",
+        *PORTFOLIO_SAMPLE_CAMPAIGN_TYPES,
+    ):
         assert key in types, f"Missing campaign type: {key}"
     print("  PASS: campaign types load")
 
@@ -76,18 +86,45 @@ def test_appointment_type_has_custom_fields():
     print("  PASS: appointment_confirmation has custom_fields")
 
 
-def test_aesthetic_appointment_setter_type_has_lead_fields():
-    """Aesthetic appointment setter declares the fields used by lead context."""
+def test_generic_appointment_setter_type_has_contact_fields():
+    """Generic appointment setter declares reusable contact context fields."""
     from services.outbound_service import get_campaign_type_config
-    cfg = get_campaign_type_config("aesthetic_appointment_setter")
-    assert cfg.get("label") == "Aesthetic Appointment Setter"
-    assert cfg.get("system_instructions_path") == "prompts/aesthetic_appointment_setter.md"
+    cfg = get_campaign_type_config("appointment_setter")
+    assert cfg.get("label") == "Appointment Setter"
+    assert cfg.get("system_instructions_path") == "prompts/generic_appointment_setter.md"
     fields = cfg.get("custom_fields", [])
     field_names = [f.get("name") for f in fields]
     assert "lead_offer" in field_names
     assert "contact_timezone" in field_names
     assert "callback_number" in field_names
-    print("  PASS: aesthetic appointment setter has lead fields")
+    print("  PASS: generic appointment setter has contact fields")
+
+
+def test_aesthetic_appointment_setter_type_remains_sample():
+    """Aesthetic appointment setter remains available as an optional sample preset."""
+    from services.outbound_service import get_campaign_type_config
+    cfg = get_campaign_type_config("aesthetic_appointment_setter")
+    assert cfg.get("label") == "Aesthetic Appointment Setter (Sample)"
+    assert cfg.get("system_instructions_path") == "prompts/aesthetic_appointment_setter.md"
+
+
+def test_portfolio_sample_campaign_types_point_to_existing_prompts():
+    """Portfolio sample campaign types are dashboard-selectable prompt presets."""
+    from services.outbound_service import get_campaign_type_config
+    from portfolio_samples import PORTFOLIO_SAMPLES
+
+    for sample in PORTFOLIO_SAMPLES.values():
+        cfg = get_campaign_type_config(sample.campaign_type)
+        assert cfg.get("label") == sample.campaign_label
+        assert cfg.get("system_instructions_path") == sample.prompt_path
+        assert PORTFOLIO_SAMPLE_CAMPAIGN_TYPES[sample.campaign_type] == sample.prompt_path
+        prompt_path = sample.prompt_path
+        assert (ROOT / prompt_path).is_file()
+        fields = cfg.get("custom_fields", [])
+        field_names = [f.get("name") for f in fields]
+        assert "lead_offer" in field_names
+        assert "contact_timezone" in field_names
+        assert "callback_number" in field_names
 
 
 def test_payment_type_has_amount_due():
@@ -411,7 +448,7 @@ def test_outbound_system_message_renders_botox_lead_context(monkeypatch):
     assert "phone=+15551234567" in result
     assert "tz=America/Los_Angeles" in result
     assert "callback=(832) 230-2418" in result
-    assert "# Outbound Lead Context" in result
+    assert "# Outbound Contact Context" in result
     assert "- lead_offer: Botox Wrinkle Reset" in result
     assert "- contact_id: contact-1" in result
     assert "- call_id: CA123" in result
@@ -477,7 +514,7 @@ def test_outbound_system_message_renders_tshape_csv_offer_alias(monkeypatch):
 
 
 def test_outbound_system_message_blank_offer_uses_active_prompt_with_context(monkeypatch):
-    """Blank campaign scripts still use Config.SYSTEM_MESSAGE plus lead context."""
+    """Blank campaign scripts still use Config.SYSTEM_MESSAGE plus contact context."""
     import services.outbound_service as outbound_service
 
     class FakeQuery:
@@ -529,7 +566,7 @@ def test_outbound_system_message_blank_offer_uses_active_prompt_with_context(mon
 
     assert result is not None
     assert "Base appointment-setter prompt." in result
-    assert "# Outbound Lead Context" in result
+    assert "# Outbound Contact Context" in result
     assert "- contact_name: Casey Lee" in result
     assert "- contact_phone: +15550001111" in result
     assert "- contact_timezone:" not in result
@@ -592,8 +629,8 @@ def test_contact_row_build():
     print("  PASS: contact row build")
 
 
-def test_lead_payload_builds_trigger_call_contact():
-    """External lead webhook payloads normalize into outbound contact shape."""
+def test_contact_payload_builds_trigger_call_contact():
+    """External contact/lead webhook payloads normalize into outbound contact shape."""
     import services.outbound_service as outbound_service
 
     payload = {
@@ -610,7 +647,7 @@ def test_lead_payload_builds_trigger_call_contact():
         "callback_number": "(832) 230-2418",
     }
 
-    contact = outbound_service.build_contact_from_lead_payload(payload)
+    contact = outbound_service.build_contact_from_payload(payload)
 
     assert contact["name"] == "La Kisha"
     assert contact["phone"] == "+12185953862"
@@ -621,11 +658,12 @@ def test_lead_payload_builds_trigger_call_contact():
     assert contact["custom_fields"]["callback_number"] == "(832) 230-2418"
     assert contact["custom_fields"]["source_campaign"] == "GHL"
     assert contact["custom_fields"]["budget"] == "100000"
-    print("  PASS: external lead payload builds trigger-call contact")
+    assert outbound_service.build_contact_from_lead_payload(payload) == contact
+    print("  PASS: external contact payload builds trigger-call contact")
 
 
-def test_get_contact_timezone_from_contact_prefers_lead_fields():
-    """Outbound lead timezone is caller context when present and absent otherwise."""
+def test_get_contact_timezone_from_contact_prefers_contact_fields():
+    """Outbound contact timezone is caller context when present and absent otherwise."""
     import services.outbound_service as outbound_service
 
     assert outbound_service.get_contact_timezone_from_contact({
@@ -643,8 +681,8 @@ def test_trigger_call_api_route_contract():
     source = (ROOT / "main.py").read_text(encoding="utf-8")
 
     assert '@app.post("/outbound/campaigns/{campaign_id}/trigger-call"' in source
-    assert "async def trigger_outbound_call_from_lead(" in source
-    assert "build_contact_from_lead_payload(body)" in source
+    assert "async def trigger_outbound_call_from_contact(" in source
+    assert "build_contact_from_payload(body)" in source
     assert "add_contacts_sync, campaign_id, [contact]" in source
     assert "_dial_outbound_contact_now(request, campaign_id, contact_id)" in source
     assert "Contact not in this campaign" in source
@@ -652,10 +690,10 @@ def test_trigger_call_api_route_contract():
     print("  PASS: trigger-call API route contract")
 
 
-def test_dashboard_outbound_form_exposes_appointment_setter_lead_fields():
-    """Outbound dashboard exposes lead fields and persists them as custom_fields."""
+def test_dashboard_outbound_form_exposes_appointment_setter_contact_fields():
+    """Outbound dashboard exposes contact fields and persists them as custom_fields."""
     html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
-    assert "<th>Lead Offer</th>" in html
+    assert "<th>Interest / Offer</th>" in html
     assert "<th>Timezone</th>" in html
     assert "<th>Callback</th>" in html
     assert "class=\"ob-c-offer\"" in html
@@ -765,24 +803,28 @@ def test_dashboard_outbound_has_confirm_modal_and_editor_header():
     print("  PASS: dashboard outbound confirm modal and editor header")
 
 
-def test_resolve_campaign_type_default_script_loads_aesthetic_prompt(monkeypatch):
-    """Dashboard/API should expose the rendered aesthetic prompt as the type default."""
+def test_resolve_campaign_type_default_script_loads_generic_and_sample_prompts(monkeypatch):
+    """Dashboard/API should expose rendered appointment prompts as type defaults."""
     import services.outbound_service as outbound_service
 
     monkeypatch.setattr(
         outbound_service,
         "_render_campaign_system_instructions",
-        lambda _path: "# Aesthetic outbound prompt\nCall {contact_name} about {lead_offer}.",
+        lambda path: f"# Rendered prompt for {path}\nCall {{contact_name}} about {{lead_offer}}.",
     )
     monkeypatch.setattr(outbound_service.Config, "SYSTEM_MESSAGE", "GENERIC FALLBACK")
 
-    script = outbound_service.resolve_campaign_type_default_script("aesthetic_appointment_setter")
-    assert "Aesthetic outbound prompt" in script
+    script = outbound_service.resolve_campaign_type_default_script("appointment_setter")
+    assert "Rendered prompt for prompts/generic_appointment_setter.md" in script
+    sample_script = outbound_service.resolve_campaign_type_default_script("sample_dentist_clinic")
+    assert "Rendered prompt for prompts/samples/dentist_clinic_receptionist.md" in sample_script
 
     dashboard_types = outbound_service.get_campaign_types_for_dashboard()
+    assert "Call {contact_name} about {lead_offer}." in dashboard_types["appointment_setter"]["default_script"]
     assert "Call {contact_name} about {lead_offer}." in dashboard_types["aesthetic_appointment_setter"]["default_script"]
+    assert "Call {contact_name} about {lead_offer}." in dashboard_types["sample_dentist_clinic"]["default_script"]
     assert dashboard_types["promo"]["default_script"].startswith("You are {agent_name}")
-    print("  PASS: resolve campaign type default script for dashboard")
+    print("  PASS: resolve campaign type default scripts for dashboard")
 
 
 def test_dashboard_outbound_script_panel_layout():
@@ -794,6 +836,22 @@ def test_dashboard_outbound_script_panel_layout():
     assert "function applyMessageScriptForCampaign(" in html
     assert "function getTypeDefaultScript(" in html
     print("  PASS: dashboard outbound script panel layout")
+
+
+def test_dashboard_outbound_sample_type_guidance():
+    """Outbound editor shows prompt path and demo assets for sample campaign types."""
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+    assert 'id="ob-type-details"' in html
+    assert "function updateCampaignTypeDetails(" in html
+    assert "function isPortfolioSampleType(" in html
+    assert "system_instructions_path" in html
+    assert "sample_campaign_type=" in html
+    assert "docs/samples/portfolio_outbound_contacts.csv" in html
+    assert "docs/samples/trigger_call_payloads.json" in html
+    assert "docs/PORTFOLIO_DEMO_ACCEPTANCE.md" in html
+    assert "obTypeSelect.addEventListener(\"change\"" in html
+    assert "var editorVisible = obEditorView && obEditorView.style.display !== \"none\";" in html
+    print("  PASS: dashboard outbound sample type guidance")
 
 
 # =========================================================================
@@ -958,7 +1016,9 @@ def run_all_tests():
             test_campaign_type_has_required_fields,
             test_campaign_type_config_lookup,
             test_appointment_type_has_custom_fields,
-            test_aesthetic_appointment_setter_type_has_lead_fields,
+            test_generic_appointment_setter_type_has_contact_fields,
+            test_aesthetic_appointment_setter_type_remains_sample,
+            test_portfolio_sample_campaign_types_point_to_existing_prompts,
             test_payment_type_has_amount_due,
         ]),
         ("System message template rendering", [
@@ -977,14 +1037,15 @@ def run_all_tests():
             test_contact_phone_required,
             test_contact_custom_fields_default,
             test_contact_row_build,
-            test_lead_payload_builds_trigger_call_contact,
+            test_contact_payload_builds_trigger_call_contact,
             test_trigger_call_api_route_contract,
-            test_dashboard_outbound_form_exposes_appointment_setter_lead_fields,
+            test_dashboard_outbound_form_exposes_appointment_setter_contact_fields,
             test_dashboard_exposes_appointment_setter_outcome_statuses,
             test_list_campaigns_includes_contact_progress,
             test_dashboard_outbound_has_confirm_modal_and_editor_header,
-            test_resolve_campaign_type_default_script_loads_aesthetic_prompt,
+            test_resolve_campaign_type_default_script_loads_generic_and_sample_prompts,
             test_dashboard_outbound_script_panel_layout,
+            test_dashboard_outbound_sample_type_guidance,
         ]),
         ("Config helpers", [
             test_config_outbound_enabled_default,

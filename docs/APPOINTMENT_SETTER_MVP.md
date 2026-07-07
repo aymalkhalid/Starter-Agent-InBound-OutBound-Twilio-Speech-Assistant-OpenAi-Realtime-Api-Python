@@ -1,11 +1,11 @@
-# Aesthetic Clinic Appointment Setter MVP
+# Aesthetic Clinic Appointment Setter Sample
 
-This document freezes the first implementation target for converting the TVAAI
-demo into a reusable outbound appointment-setter starter for aesthetic clinics.
+This document preserves the optional TVAAI/aesthetic clinic sample built on top
+of the generic outbound appointment-setter starter.
 
-The goal is not to make a one-off TVAAI prompt. The goal is to create a reusable
-clinic appointment-setter base that can be duplicated for future med spa,
-aesthetic clinic, wellness clinic, or similar appointment-driven clients.
+The core starter should stay generic. Use this sample as a portfolio/client
+variant for med spa, aesthetic clinic, wellness clinic, or similar
+appointment-driven businesses.
 
 ## 1. MVP Objective
 
@@ -130,9 +130,9 @@ The same normalized lead fields should be used regardless of source:
 - optional custom fields
 
 Manual form, CSV upload, and one-shot API intake now use the same normalized
-lead fields and outbound prompt path.
+contact fields and outbound prompt path.
 
-The one-shot lead API is now the production integration path for GHL, n8n,
+The one-shot contact trigger API is now the production integration path for GHL, n8n,
 Zapier, Insomnia testing, or direct Facebook lead-form middleware:
 
 ```http
@@ -165,18 +165,18 @@ API execution flow:
 
 1. Validate dashboard/API auth and outbound configuration.
 2. Load the target campaign.
-3. Normalize the posted lead payload into an outbound contact.
+3. Normalize the posted contact/lead payload into an outbound contact.
 4. Insert that contact into the campaign with `pending` status.
 5. Immediately dial the contact through Twilio.
 6. Register the Twilio `call_sid` to the campaign/contact context.
 7. When the call is answered, `/outbound-call-twiml/{campaign_id}` starts the
    media stream.
 8. The websocket session renders the campaign prompt and appends
-   `# Outbound Lead Context`, so the AI starts from the actual posted lead data.
+   `# Outbound Contact Context`, so the AI starts from the actual posted contact data.
 
 For manual outbound form tests, use the first-class row fields:
 
-- Lead Offer: `Botox Wrinkle Reset` or `T-Shape body contouring voucher`
+- Interest / Offer: `Botox Wrinkle Reset` or `T-Shape body contouring voucher`
 - Timezone: `America/Los_Angeles`
 - Callback: `(832) 230-2418`
 

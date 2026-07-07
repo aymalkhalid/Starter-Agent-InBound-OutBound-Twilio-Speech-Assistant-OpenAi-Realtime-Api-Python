@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS public.outbound_campaigns (
 );
 
 COMMENT ON TABLE  public.outbound_campaigns IS 'Dashboard-created outbound calling campaigns. Status: draft → running → paused → completed.';
-COMMENT ON COLUMN public.outbound_campaigns.campaign_type IS 'promo | appointment_confirmation | payment_reminder | general';
+COMMENT ON COLUMN public.outbound_campaigns.campaign_type IS 'appointment_setter | sample_dentist_clinic | sample_medical_office | sample_real_estate | sample_home_services | sample_ecommerce_support | sample_b2b_qualifier | sample_general_receptionist | aesthetic_appointment_setter | promo | appointment_confirmation | payment_reminder | follow_up | general | missed_call_callback';
 COMMENT ON COLUMN public.outbound_campaigns.message_template IS 'AI system prompt / script template with {contact_name}, {company_name}, etc.';
 COMMENT ON COLUMN public.outbound_campaigns.concurrency IS 'Max simultaneous outbound calls for this campaign.';
 COMMENT ON COLUMN public.outbound_campaigns.status IS 'draft | running | paused | completed';
