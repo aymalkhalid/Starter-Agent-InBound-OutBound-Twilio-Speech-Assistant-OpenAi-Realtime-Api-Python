@@ -139,6 +139,21 @@ def _require_dashboard_key(
     raise HTTPException(status_code=401, detail="Dashboard key or login required (query key=, header X-Dashboard-Key, or log in at /login)")
 
 
+def _require_configured_dashboard_auth(
+    request: Request,
+    key: str | None = Query(None, alias="key"),
+    x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
+) -> None:
+    """Require dashboard auth and reject public/no-auth dashboard deployments."""
+    auth = Config.get_dashboard_auth()
+    if not auth.get("signing_key") and not auth.get("valid_keys"):
+        raise HTTPException(
+            status_code=403,
+            detail="Voice Lab requires dashboard authentication. Set DASHBOARD_USERS in .env.",
+        )
+    _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
+
+
 @app.exception_handler(RedirectToLoginException)
 async def _redirect_to_login_handler(request: Request, exc: RedirectToLoginException):
     return RedirectResponse(url=f"/login?next={exc.next_path}", status_code=302)
@@ -483,6 +498,117 @@ async def dashboard_page(
     return HTMLResponse(html)
 
 
+@app.get("/dashboard/voice-lab", response_class=HTMLResponse)
+async def voice_lab_page(
+    request: Request,
+    key: str | None = Query(None, alias="key"),
+):
+    """Serve the protected high-fidelity browser Realtime Voice Lab."""
+    _require_configured_dashboard_auth(request=request, key=key, x_dashboard_key=None)
+    voice_lab_path = Path(__file__).resolve().parent / "static" / "voice_lab.html"
+    if not voice_lab_path.is_file():
+        raise HTTPException(status_code=404, detail="Voice Lab template not found")
+    html = voice_lab_path.read_text(encoding="utf-8")
+    auth = Config.get_dashboard_auth()
+    inject = (key or "") if auth.get("signing_key") else ""
+    html = html.replace("__DASHBOARD_KEY_PLACEHOLDER__", inject)
+    company = getattr(Config, "COMPANY_NAME", None) or ""
+    html = html.replace("__DASHBOARD_COMPANY_PLACEHOLDER__", html_module.escape(company))
+    return HTMLResponse(html)
+
+
+@app.post("/api/realtime/browser-session", response_class=JSONResponse)
+async def create_browser_realtime_session(
+    request: Request,
+    body: dict = Body(default_factory=dict),
+    key: str | None = Query(None, alias="key"),
+    x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
+):
+    """Mint a short-lived browser Realtime client secret without exposing OPENAI_API_KEY."""
+    _require_configured_dashboard_auth(request=request, key=key, x_dashboard_key=x_dashboard_key)
+    try:
+        from voice_realtime.browser import (
+            BrowserRealtimeError,
+            mint_browser_realtime_session,
+            safety_identifier,
+        )
+        from voice_realtime.settings import EffectiveRealtimeSettings
+        from services.dynamic_settings import load_overrides_sync
+
+        temporary_overrides = body.get("settings") if isinstance(body, dict) else None
+        if temporary_overrides is not None and not isinstance(temporary_overrides, dict):
+            raise HTTPException(status_code=400, detail="settings must be an object")
+        dynamic_overrides = load_overrides_sync()
+        settings = EffectiveRealtimeSettings.from_config(
+            Config,
+            dynamic_settings=dynamic_overrides,
+            temporary_overrides=temporary_overrides,
+        )
+        user = getattr(request.state, "dashboard_user", None) or (key or x_dashboard_key or "")
+        client_host = request.client.host if request.client else "unknown"
+        throttle_key = f"{user or client_host}"
+        response_payload = await mint_browser_realtime_session(
+            settings=settings,
+            throttle_key=throttle_key,
+            safety_id=safety_identifier(user or client_host),
+            preset=(temporary_overrides or {}).get("preset") if isinstance(temporary_overrides, dict) else None,
+        )
+        return response_payload
+    except HTTPException:
+        raise
+    except BrowserRealtimeError as e:
+        message = str(e)
+        status = 429 if "rate limit" in message.lower() or "too many" in message.lower() else 400
+        raise HTTPException(status_code=status, detail=message) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to create browser Realtime session.") from e
+
+
+@app.post("/api/realtime/browser-tool-call", response_class=JSONResponse)
+async def browser_realtime_tool_call(
+    request: Request,
+    body: dict = Body(...),
+    key: str | None = Query(None, alias="key"),
+    x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
+):
+    """Execute a browser Realtime tool call through server-side Python handlers."""
+    _require_configured_dashboard_auth(request=request, key=key, x_dashboard_key=x_dashboard_key)
+    try:
+        from voice_realtime.browser import BrowserRealtimeError, execute_browser_tool_call
+
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="JSON object required")
+        arguments = body.get("arguments") or {}
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except Exception:
+                arguments = {"_raw": arguments}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        result = await execute_browser_tool_call(
+            browser_session_id=str(body.get("browser_session_id") or ""),
+            call_id=str(body.get("call_id") or ""),
+            name=str(body.get("name") or ""),
+            arguments=arguments,
+        )
+        return {
+            "type": "function_call_output",
+            "call_id": result.call_id,
+            "item": result.item,
+            "trigger_response": result.trigger_response,
+            "duplicate": result.duplicate,
+        }
+    except HTTPException:
+        raise
+    except BrowserRealtimeError as e:
+        message = str(e)
+        status = 404 if "invalid or expired" in message.lower() else 400
+        raise HTTPException(status_code=status, detail=message) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Browser tool call failed.") from e
+
+
 
 
 @app.get("/settings", response_class=JSONResponse)
@@ -502,6 +628,41 @@ async def get_settings(
         overrides = load_overrides_sync()
         apply_overrides_to_config(overrides)
         return get_effective_settings()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/realtime/options", response_class=JSONResponse)
+async def get_realtime_options(
+    request: Request,
+    key: str | None = Query(None, alias="key"),
+    x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
+):
+    """Return registry-backed Realtime model, voice, preset, VAD, and reasoning options."""
+    _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
+    from voice_realtime.options import get_realtime_options_payload
+
+    return get_realtime_options_payload()
+
+
+@app.get("/api/settings/effective", response_class=JSONResponse)
+async def get_effective_settings_sources(
+    request: Request,
+    key: str | None = Query(None, alias="key"),
+    x_dashboard_key: str | None = Header(None, alias="X-Dashboard-Key"),
+):
+    """Return effective app settings with source metadata. Secrets are not included."""
+    _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
+    try:
+        from services.dynamic_settings import (
+            apply_overrides_to_config,
+            get_effective_settings_with_sources,
+            load_overrides_sync,
+        )
+
+        overrides = load_overrides_sync()
+        apply_overrides_to_config(overrides)
+        return get_effective_settings_with_sources(overrides)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 

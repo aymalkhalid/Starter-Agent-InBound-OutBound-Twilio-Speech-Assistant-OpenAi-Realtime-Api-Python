@@ -7,6 +7,7 @@ stay prompt-as-code in prompts/main_system_instructions.md. See docs/CONFIGURATI
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -20,8 +21,33 @@ from config import (
     _normalize_warmth,
     _sanitize_prompt_control,
 )
+from voice_realtime.models import normalize_reasoning_effort, validate_realtime_model
+from voice_realtime.settings import normalize_vad_eagerness, normalize_vad_mode, normalize_voice_profile
 from services.log_utils import Log
 from services.timezone_utils import normalize_timezone_name
+
+GROUPED_REALTIME_SETTINGS_KEY = "REALTIME_VOICE_SETTINGS"
+GROUPED_REALTIME_SETTING_KEYS = frozenset(
+    {
+        "OPENAI_REALTIME_MODEL",
+        "VOICE",
+        "VOICE_PROFILE",
+        "REALTIME_REASONING_EFFORT",
+        "VAD_MODE",
+        "VAD_EAGERNESS",
+        "VAD_THRESHOLD",
+        "VAD_SILENCE_DURATION_MS",
+        "VAD_PREFIX_PADDING_MS",
+        "ASSISTANT_TONE",
+        "ASSISTANT_WARMTH",
+        "ASSISTANT_EXPRESSIVENESS",
+        "ASSISTANT_PACING",
+        "ASSISTANT_LANGUAGE",
+        "ASSISTANT_ACCENT",
+        "ASSISTANT_ACCENT_STRENGTH",
+        "LANGUAGE_SWITCH_POLICY",
+    }
+)
 
 # Runtime-safe keys the dashboard can override. Value type: "str" | "bool" | "int" | "float"
 # Do not add full prompt bodies, prompt-profile ids, or industry templates here.
@@ -31,6 +57,7 @@ OVERRIDABLE_KEYS: dict[str, str] = {
     "TRANSCRIPT_ENHANCEMENT_ENABLED": "bool",
     "CALL_RECORDING_ENABLED": "bool",
     "VOICE": "str",
+    "VOICE_PROFILE": "str",
     "ASSISTANT_TONE": "str",
     "ASSISTANT_WARMTH": "str",
     "ASSISTANT_EXPRESSIVENESS": "str",
@@ -57,7 +84,7 @@ OVERRIDABLE_KEYS: dict[str, str] = {
     "VAD_EAGERNESS": "str",
     "HUMAN_TRANSFER_ENABLED": "bool",
     "HUMAN_TRANSFER_DIAL_NUMBER": "str",
-    # Realtime / transcript models (e.g. gpt-realtime-2, gpt-realtime-1.5, gpt-4o-mini)
+    # Realtime / transcript models. OPENAI_REALTIME_MODEL must be registered unless explicitly allowed.
     "OPENAI_REALTIME_MODEL": "str",
     "REALTIME_REASONING_EFFORT": "str",
     "TRANSCRIPT_ENHANCEMENT_MODEL": "str",
@@ -85,6 +112,70 @@ def _parse_value(key: str, raw: str) -> Any:
     return s
 
 
+def _normalize_override_for_storage(key: str, value: Any) -> Any:
+    """Normalize settings before persistence so app_settings never stores invalid voice/model controls."""
+    if key == "OPENAI_REALTIME_MODEL":
+        return validate_realtime_model(
+            str(value or "").strip(),
+            allow_unregistered=bool(getattr(Config, "ALLOW_UNREGISTERED_REALTIME_MODELS", False)),
+        )
+    if key == "REALTIME_REASONING_EFFORT":
+        return normalize_reasoning_effort(str(value or "low"))
+    if key == "VOICE":
+        return _normalize_realtime_voice(str(value or ""))
+    if key == "VOICE_PROFILE":
+        return normalize_voice_profile(str(value or "custom"))
+    if key == "VAD_MODE":
+        return normalize_vad_mode(str(value or "server_vad"))
+    if key == "VAD_EAGERNESS":
+        return normalize_vad_eagerness(str(value or "auto"))
+    return value
+
+
+def _stringify_setting_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _parse_grouped_realtime_settings(raw: Any) -> dict[str, str]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(str(raw))
+    except (TypeError, ValueError):
+        Log.error(f"Dynamic settings: invalid {GROUPED_REALTIME_SETTINGS_KEY} JSON")
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in parsed.items():
+        if key in GROUPED_REALTIME_SETTING_KEYS and key in OVERRIDABLE_KEYS:
+            out[key] = _stringify_setting_value(value)
+    return out
+
+
+def _settings_rows_to_overrides(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """Convert Supabase app_settings rows into flat overrides.
+
+    Realtime voice/model settings are accepted only from the grouped JSON row.
+    Other operational settings remain simple per-key rows.
+    """
+    flat: dict[str, str] = {}
+    grouped_raw: Any = None
+    for row in rows:
+        key = row.get("key")
+        value = row.get("value") or ""
+        if key == GROUPED_REALTIME_SETTINGS_KEY:
+            grouped_raw = value
+        elif key in OVERRIDABLE_KEYS and key not in GROUPED_REALTIME_SETTING_KEYS:
+            flat[key] = _stringify_setting_value(value)
+    flat.update(_parse_grouped_realtime_settings(grouped_raw))
+    return flat
+
+
 def load_overrides_sync() -> dict[str, str]:
     """Load key-value overrides from Supabase app_settings table. Returns {} if not configured or on error."""
     if (Config.CALL_RECORD_BACKEND or "").strip().lower() != "supabase":
@@ -97,10 +188,23 @@ def load_overrides_sync() -> dict[str, str]:
         # Use a small table name; typically in the same DB as call records
         r = client.table("app_settings").select("key, value").execute()
         rows = getattr(r, "data", None) or []
-        return {row["key"]: row.get("value") or "" for row in rows if row.get("key") in OVERRIDABLE_KEYS}
+        return _settings_rows_to_overrides(rows)
     except Exception as e:
         Log.error(f"Dynamic settings load error: {e}")
         return {}
+
+
+def _load_existing_grouped_realtime_settings(client: Any) -> dict[str, Any]:
+    try:
+        r = client.table("app_settings").select("key, value").execute()
+        rows = getattr(r, "data", None) or []
+        for row in rows:
+            if row.get("key") == GROUPED_REALTIME_SETTINGS_KEY:
+                parsed = _parse_grouped_realtime_settings(row.get("value") or "")
+                return {key: _parse_value(key, value) for key, value in parsed.items()}
+    except Exception as e:
+        Log.error(f"Dynamic settings grouped load error: {e}")
+    return {}
 
 
 def save_overrides_sync(updates: dict[str, Any]) -> bool:
@@ -109,13 +213,34 @@ def save_overrides_sync(updates: dict[str, Any]) -> bool:
         return False
     if not Config.SUPABASE_URL or not Config.SUPABASE_KEY:
         return False
-    allowed = {k: v for k, v in updates.items() if k in OVERRIDABLE_KEYS}
-    if not allowed:
-        return True
     try:
+        allowed = {
+            k: _normalize_override_for_storage(k, v)
+            for k, v in updates.items()
+            if k in OVERRIDABLE_KEYS
+        }
+        if not allowed:
+            return True
         from supabase import create_client
         client = create_client(Config.SUPABASE_URL.strip(), Config.SUPABASE_KEY.strip())
+        grouped_updates = {
+            key: val
+            for key, val in allowed.items()
+            if key in GROUPED_REALTIME_SETTING_KEYS
+        }
+        if grouped_updates:
+            grouped_payload = _load_existing_grouped_realtime_settings(client)
+            grouped_payload.update(grouped_updates)
+            client.table("app_settings").upsert(
+                {
+                    "key": GROUPED_REALTIME_SETTINGS_KEY,
+                    "value": json.dumps(grouped_payload, sort_keys=True),
+                },
+                on_conflict="key",
+            ).execute()
         for key, val in allowed.items():
+            if key in GROUPED_REALTIME_SETTING_KEYS:
+                continue
             client.table("app_settings").upsert({"key": key, "value": str(val)}, on_conflict="key").execute()
         return True
     except Exception as e:
@@ -141,6 +266,8 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
                 Config.CALL_RECORDING_ENABLED = bool(val)
             elif key == "VOICE":
                 Config.VOICE = _normalize_realtime_voice(val if isinstance(val, str) else None)
+            elif key == "VOICE_PROFILE":
+                Config.VOICE_PROFILE = normalize_voice_profile(val if isinstance(val, str) else None)
             elif key == "ASSISTANT_TONE":
                 Config.ASSISTANT_TONE = _sanitize_prompt_control(val if isinstance(val, str) else None, "warm professional", 80)
                 prompt_needs_rebuild = True
@@ -201,18 +328,22 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
             elif key == "VAD_INTERRUPTION_CONFIRM_MS":
                 Config.VAD_INTERRUPTION_CONFIRM_MS = int(val) if isinstance(val, (int, float)) else Config.VAD_INTERRUPTION_CONFIRM_MS
             elif key == "VAD_MODE":
-                Config.VAD_MODE = (val or "server_vad").strip().lower() if isinstance(val, str) else Config.VAD_MODE
+                Config.VAD_MODE = normalize_vad_mode(val if isinstance(val, str) else None)
             elif key == "VAD_EAGERNESS":
-                Config.VAD_EAGERNESS = (val or "auto").strip().lower() if isinstance(val, str) else Config.VAD_EAGERNESS
+                Config.VAD_EAGERNESS = normalize_vad_eagerness(val if isinstance(val, str) else None)
             elif key == "HUMAN_TRANSFER_ENABLED":
                 Config.HUMAN_TRANSFER_ENABLED = bool(val)
             elif key == "HUMAN_TRANSFER_DIAL_NUMBER":
                 Config.HUMAN_TRANSFER_DIAL_NUMBER = (val or "").strip() or getattr(Config, "HUMAN_TRANSFER_DIAL_NUMBER", "+15551234567")
             elif key == "OPENAI_REALTIME_MODEL":
-                Config.OPENAI_REALTIME_MODEL = (val or "gpt-realtime-2").strip() if isinstance(val, str) else Config.OPENAI_REALTIME_MODEL
+                Config.OPENAI_REALTIME_MODEL = validate_realtime_model(
+                    val if isinstance(val, str) else Config.OPENAI_REALTIME_MODEL,
+                    allow_unregistered=bool(getattr(Config, "ALLOW_UNREGISTERED_REALTIME_MODELS", False)),
+                )
+                prompt_needs_rebuild = True
             elif key == "REALTIME_REASONING_EFFORT":
-                effort = (val or "low").strip().lower() if isinstance(val, str) else "low"
-                Config.REALTIME_REASONING_EFFORT = effort if effort in {"minimal", "low", "medium", "high", "xhigh"} else "low"
+                Config.REALTIME_REASONING_EFFORT = normalize_reasoning_effort(val if isinstance(val, str) else "low")
+                prompt_needs_rebuild = True
             elif key == "TRANSCRIPT_ENHANCEMENT_MODEL":
                 Config.TRANSCRIPT_ENHANCEMENT_MODEL = (val or "gpt-4o-mini").strip() if isinstance(val, str) else Config.TRANSCRIPT_ENHANCEMENT_MODEL
             elif key == "GOOGLE_CALENDAR_ID":
@@ -240,6 +371,12 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
         "BUSINESS_APPOINTMENT_CLOSING_TIME",
         "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY",
         "BOOKING_DAYS_ENABLED",
+        "OPENAI_REALTIME_MODEL",
+        "REALTIME_REASONING_EFFORT",
+        "VOICE",
+        "VOICE_PROFILE",
+        "VAD_MODE",
+        "VAD_EAGERNESS",
     ):
         if key in overrides:
             val = getattr(Config, key, None)
@@ -277,3 +414,27 @@ def get_effective_settings() -> dict[str, Any]:
         else:
             out[key] = getattr(Config, key, None)
     return out
+
+
+def get_effective_settings_with_sources(overrides: dict[str, str] | None = None) -> dict[str, Any]:
+    """Return effective settings with source metadata for dashboard diagnostics."""
+    active_overrides = overrides if overrides is not None else load_overrides_sync()
+    values = get_effective_settings()
+    settings: dict[str, dict[str, Any]] = {}
+    for key in OVERRIDABLE_KEYS:
+        if key in active_overrides:
+            source = "supabase"
+        elif os.environ.get(key) not in (None, ""):
+            source = "env"
+        else:
+            source = "default"
+        settings[key] = {
+            "value": values.get(key),
+            "source": source,
+        }
+    return {
+        "precedence": ["temporary_session_overrides", "supabase_app_settings", "env", "defaults"],
+        "settings": settings,
+        "grouped_realtime_settings_key": GROUPED_REALTIME_SETTINGS_KEY,
+        "grouped_realtime_setting_keys": sorted(GROUPED_REALTIME_SETTING_KEYS),
+    }

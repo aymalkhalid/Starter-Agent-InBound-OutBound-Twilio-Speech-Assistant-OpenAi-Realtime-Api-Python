@@ -24,10 +24,10 @@ import services.call_records_service as call_records_service_module
 
 def test_create_session_update_uses_configured_realtime_model(monkeypatch):
     """session.update model must follow Config.OPENAI_REALTIME_MODEL."""
-    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-1.5")
+    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-2.1")
     monkeypatch.setattr(Config, "REALTIME_INPUT_TRANSCRIPTION_MODEL", "")
     payload = OpenAISessionManager.create_session_update()
-    assert payload["session"]["model"] == "gpt-realtime-1.5"
+    assert payload["session"]["model"] == "gpt-realtime-2.1"
 
 
 def test_create_session_update_includes_reasoning_effort_for_gpt_realtime_2(monkeypatch):
@@ -39,9 +39,18 @@ def test_create_session_update_includes_reasoning_effort_for_gpt_realtime_2(monk
     assert payload["session"]["reasoning"] == {"effort": "low"}
 
 
-def test_create_session_update_omits_reasoning_effort_for_older_realtime_model(monkeypatch):
-    """Older realtime models should not receive gpt-realtime-2 reasoning config."""
-    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-1.5")
+def test_create_session_update_includes_reasoning_effort_for_gpt_realtime_2_1(monkeypatch):
+    """gpt-realtime-2.1 sessions should carry supported reasoning effort."""
+    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-2.1")
+    monkeypatch.setattr(Config, "REALTIME_REASONING_EFFORT", "medium")
+    monkeypatch.setattr(Config, "REALTIME_INPUT_TRANSCRIPTION_MODEL", "")
+    payload = OpenAISessionManager.create_session_update()
+    assert payload["session"]["reasoning"] == {"effort": "medium"}
+
+
+def test_create_session_update_omits_reasoning_effort_for_mini(monkeypatch):
+    """Mini should not receive reasoning.effort unless the registry documents support."""
+    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-2.1-mini")
     monkeypatch.setattr(Config, "REALTIME_REASONING_EFFORT", "low")
     monkeypatch.setattr(Config, "REALTIME_INPUT_TRANSCRIPTION_MODEL", "")
     payload = OpenAISessionManager.create_session_update()
@@ -911,6 +920,7 @@ def test_booking_tool_descriptions_require_exact_booking_confirmation(monkeypatc
     assert "deposit, schedule-protection, policy, or payment-link consent" in by_name["book_appointment"]["description"]
     assert "required consent is explicit" in by_name["book_appointment"]["description"]
     assert "Do not say the appointment was cancelled until this tool succeeds" in by_name["delete_booking"]["description"]
+    assert "remaining_booking_count" in by_name["delete_booking"]["description"]
     assert "Do not say the appointment was rescheduled until this tool succeeds" in by_name["edit_booking"]["description"]
     assert "caller_timezone" in by_name["get_availability"]["parameters"]["properties"]
     assert "caller_timezone" in by_name["book_appointment"]["parameters"]["properties"]
@@ -1298,7 +1308,47 @@ def test_delete_booking_success_clears_stored_booking_fields(monkeypatch):
     ]
     assert connection_manager.state.resolved_business_lead_id == "lead_cancelled_1"
     outputs = _tool_outputs(connection_manager)
-    assert any("Appointment cancelled." in o for o in outputs)
+    assert outputs
+    payload = json.loads(outputs[0])
+    assert payload["success"] is True
+    assert payload["action"] == "delete_booking"
+    assert payload["event_id"] == "evt_delete_1"
+    assert payload["message"] == "Appointment cancelled."
+
+
+def test_delete_booking_failure_returns_structured_tool_output(monkeypatch):
+    """Cancellation failures should be explicit so the model cannot safely claim success."""
+    service = OpenAIService()
+    connection_manager = _DummyConnectionManager(call_sid=None)
+
+    def _fake_booking_delete_booking(**kwargs):
+        return {
+            "success": False,
+            "message": "Appointment not found.",
+            "event_id": kwargs.get("event_id"),
+        }
+
+    monkeypatch.setattr(openai_service_module, "booking_delete_booking", _fake_booking_delete_booking)
+    monkeypatch.setattr(openai_service_module.asyncio, "get_event_loop", lambda: _ImmediateExecutorLoop())
+
+    tool_call = {
+        "name": "delete_booking",
+        "arguments": {
+            "event_id": "evt_missing",
+            "contact_phone": "+15555550101",
+        },
+        "call_id": "call_delete_failure_1",
+    }
+
+    async def _run():
+        assert await service.maybe_handle_tool_call(connection_manager, tool_call) is True
+
+    asyncio.run(_run())
+    payload = json.loads(_tool_outputs(connection_manager)[0])
+    assert payload["success"] is False
+    assert payload["action"] == "delete_booking"
+    assert payload["event_id"] == "evt_missing"
+    assert payload["message"] == "Appointment not found."
 
 
 def test_edit_booking_success_updates_stored_confirmed_slot(monkeypatch):

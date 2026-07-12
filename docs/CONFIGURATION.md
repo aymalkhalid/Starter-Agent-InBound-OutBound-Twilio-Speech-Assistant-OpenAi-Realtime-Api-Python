@@ -32,7 +32,7 @@ The markdown file defines OpenAI Realtime-aligned behavior:
 | `{delivery_instruction}` | `_build_delivery_instruction()` | Tone, warmth, expressiveness, pacing, and speech-style anchors |
 | `{language_instruction}` | `_build_language_instruction()` | English-primary or multilingual policy |
 | `{accent_instruction}` | `_build_accent_instruction()` | English delivery accent, separate from language |
-| `{reasoning_effort_instruction}` | `_build_reasoning_effort_instruction()` | gpt-realtime-2 effort guidance (empty for older models) |
+| `{reasoning_effort_instruction}` | `_build_reasoning_effort_instruction()` | Realtime reasoning-effort guidance for registered models that support configurable effort |
 | `{tools_availability_instruction}` | `_build_tools_availability_instruction()` | Lists tools actually enabled this session |
 | `{call_record_instruction}` | `_build_call_record_instruction()` | When/how to call `save_call_record` |
 | `{booking_instruction}` | `_build_booking_instruction()` | Booking flow and confirmation rules |
@@ -101,9 +101,11 @@ VAD can also be tuned from the dashboard Settings panel when Supabase is enabled
 | `AGENT_NAME` | — | Spoken agent name |
 | `AGENT_LABEL` | `generic_voice_agent` | Internal label |
 | `SYSTEM_INSTRUCTIONS_PATH` | `prompts/main_system_instructions.md` | Alternate prompt file |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2` | Realtime model id |
-| `REALTIME_REASONING_EFFORT` | `low` | `minimal` … `xhigh`; sent in session for `gpt-realtime-2` only |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2` | Registered Realtime model id: `gpt-realtime-2`, `gpt-realtime-2.1`, or `gpt-realtime-2.1-mini` |
+| `ALLOW_UNREGISTERED_REALTIME_MODELS` | `false` | Reject unknown Realtime models unless explicitly enabled |
+| `REALTIME_REASONING_EFFORT` | `low` | `minimal` … `xhigh`; sent only when the model registry says the selected model supports configurable reasoning effort |
 | `VOICE` | `cedar` | OpenAI Realtime voice |
+| `VOICE_PROFILE` | `custom` | Logical preset/profile marker used by voice testing workflows |
 | `ASSISTANT_TONE` | `warm professional` | Short tone label inserted into delivery guidance |
 | `ASSISTANT_WARMTH` | `warm` | `neutral`, `warm`, `very_warm` |
 | `ASSISTANT_EXPRESSIVENESS` | `balanced` | `reserved`, `balanced`, `expressive` |
@@ -177,6 +179,8 @@ Run `docs/supabase-schema/call_records_schema.sql` when enabling Supabase call-r
 Call records are enriched over time: `save_call_record` writes the live summary and latest `call_sid`; `/recording-status` attaches `recording_link`; dashboard transcription writes `transcript`; enhancement writes `transcript_summary`, `transcript_issues`, and `transcript_enhanced_at`. The dashboard shows a single compact `Call SID` field and expands related SIDs only when metadata contains multiple call attempts.
 
 Supabase `app_settings` stores runtime-safe overrides only. Do not put full system prompts, industry prompt profiles, or tool policy in `app_settings`; keep those in code and review them with tests.
+
+Realtime model, voice, profile, VAD, and delivery controls are saved as one grouped JSON row with `key='REALTIME_VOICE_SETTINGS'` so the dashboard does not persist an invalid intermediate combination one field at a time. Per-key rows are used for other operational settings such as booking, recording, transfer, timezone, and transcript settings.
 
 ## Changing Behavior Safely
 

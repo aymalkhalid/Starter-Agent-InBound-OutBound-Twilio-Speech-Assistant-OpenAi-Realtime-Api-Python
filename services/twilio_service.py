@@ -63,6 +63,14 @@ class TwilioService:
         from_number = ""
         source_used = "none"
 
+        # This helper function, _first, is used to extract the first available string value for a sequence of keys from a dictionary `d`.
+        # It's commonly needed because Twilio payload values may be single values or lists (e.g., after parsing query/form data).
+        # For each provided key, it checks if there's a value:
+        #   - If it's a list with elements, it grabs the first one.
+        #   - If it's a single value, it uses it as-is.
+        #   - If it's a bytes object, it decodes it to a string.
+        #   - Finally, it strips whitespace and returns the string (or empty string if empty).
+        # If none of the keys have a value, it returns an empty string.
         def _first(d: dict, *keys: str) -> str:
             for k in keys:
                 v = d.get(k)
@@ -72,6 +80,7 @@ class TwilioService:
                         val = val.decode("utf-8", errors="replace")
                     return (str(val).strip() or "")
             return ""
+ 
 
         # 1) POST: read raw body first (Twilio sends application/x-www-form-urlencoded)
         #    We parse it ourselves because request.form() can be empty in some deployments.

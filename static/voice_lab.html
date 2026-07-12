@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════
+       Design Tokens — Slate Lab (prompt hierarchy first)
+       ═══════════════════════════════════════════════════ */
+    :root {
+      --bg-dark: #0b1220;
+      --bg-grad:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(14, 116, 144, 0.22), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(20, 184, 166, 0.1), transparent 45%),
+        linear-gradient(165deg, #0b1220 0%, #111827 55%, #0f172a 100%);
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-hover: rgba(255, 255, 255, 0.07);
+      --surface-raised: rgba(15, 23, 42, 0.72);
+      --glass-blur: blur(18px);
+      --border: rgba(148, 163, 184, 0.14);
+      --border-light: rgba(148, 163, 184, 0.28);
+
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+
+      /* Primary action / listening */
+      --accent: #14b8a6;
+      --accent-glow: rgba(20, 184, 166, 0.35);
+      --accent-hover: #0d9488;
+
+      /* Assistant prompt voice (left column of conversation) */
+      --prompt: #5eead4;
+      --prompt-soft: rgba(45, 212, 191, 0.12);
+      --prompt-border: rgba(45, 212, 191, 0.28);
+
+      /* Caller / user speech (right) */
+      --caller: #38bdf8;
+      --caller-fill: rgba(14, 165, 233, 0.18);
+      --caller-border: rgba(56, 189, 248, 0.35);
+
+      --ok: #34d399;
+      --ok-glow: rgba(52, 211, 153, 0.4);
+      --danger: #f87171;
+      --danger-soft: rgba(248, 113, 113, 0.12);
+      --danger-glow: rgba(248, 113, 113, 0.35);
+      --warn: #fbbf24;
+
+      --transition: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+      --shadow-depth: 0 12px 28px -14px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Sora', sans-serif;
+      background: var(--bg-grad);
+      background-attachment: fixed;
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    body::before, body::after {
+      content: '';
+      position: absolute;
+      width: 520px;
+      height: 520px;
+      border-radius: 50%;
+      filter: blur(110px);
+      z-index: -1;
+      opacity: 0.18;
+      animation: ambient-drift 22s infinite alternate ease-in-out;
+      pointer-events: none;
+    }
+    body::before {
+      top: -180px;
+      left: -160px;
+      background: #0e7490;
+    }
+    body::after {
+      bottom: -200px;
+      right: -140px;
+      background: #115e59;
+      animation-delay: -11s;
+    }
+    @keyframes ambient-drift {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(60px, 40px) scale(1.12); }
+    }
+
+    /* ═══════════════════════════════════════════════════
+       Step 2 — Header & Glassmorphism
+       ═══════════════════════════════════════════════════ */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      padding: 0 32px;
+      background: rgba(11, 18, 32, 0.72);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header-left h1 {
+      font-size: 17px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .header-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border);
+    }
+    .header-company {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .mode-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      transition: all var(--transition);
+    }
+    .mode-chip.connected {
+      background: rgba(52, 211, 153, 0.1);
+      border-color: rgba(52, 211, 153, 0.32);
+      color: var(--ok);
+    }
+    .mode-chip::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: all var(--transition);
+    }
+    .mode-chip.connected::before {
+      background: var(--ok);
+      box-shadow: 0 0 8px var(--ok);
+      animation: chip-pulse 2s ease-in-out infinite;
+    }
+    @keyframes chip-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .55; transform: scale(1.15); }
+    }
+    .header-link {
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color var(--transition);
+      font-weight: 500;
+    }
+    .header-link:hover { color: var(--prompt); }
+
+    /* ═══════════════════════════════════════════════════
+       Step 3 — Layout & IA
+       ═══════════════════════════════════════════════════ */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+      padding: 24px 32px;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Glass Panels */
+    .glass-panel {
+      background: var(--surface);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow-depth);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar: Control Center */
+    .sidebar {
+      padding: 24px;
+      justify-content: flex-start;
+      gap: 24px;
+      height: calc(100vh - 112px);
+      position: sticky;
+      top: 88px;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       Step 1 — The "Hero" Voice Orb
+       ═══════════════════════════════════════════════════ */
+    .orb-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 0;
+    }
+    
+    .voice-orb {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      --voice-level: 0;
+    }
+
+    .orb-fluid {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      filter: blur(8px) contrast(1.15);
+      mix-blend-mode: screen;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.75), rgba(15, 23, 42, 0.92));
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.45), 0 0 36px var(--accent-glow);
+      transition: all 0.45s ease;
+      animation: fluid-morph 8s ease-in-out infinite alternate;
+    }
+    
+    .orb-core {
+      position: absolute;
+      width: 60%;
+      height: 60%;
+      border-radius: 50%;
+      background: #fff;
+      filter: blur(15px);
+      opacity: 0.1;
+      transition: opacity 0.3s;
+    }
+
+    @keyframes fluid-morph {
+      0% { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; transform: rotate(0deg); }
+      100% { border-radius: 70% 30% 50% 50% / 30% 30% 70% 70%; transform: rotate(360deg); }
+    }
+
+    /* Color order: idle → connecting → ready → listening (caller) → speaking (prompt) → muted → error */
+    .voice-orb[data-state="idle"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(100, 116, 139, 0.45), rgba(15, 23, 42, 0.85));
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.75);
+      animation-duration: 15s;
+    }
+    .voice-orb[data-state="connecting"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(56, 189, 248, 0.7), rgba(15, 23, 42, 0.85));
+      box-shadow: 0 0 28px rgba(56, 189, 248, 0.35);
+      animation-duration: 4s;
+    }
+    .voice-orb[data-state="ready"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(52, 211, 153, 0.7), rgba(6, 78, 59, 0.75));
+      box-shadow: 0 0 36px var(--ok-glow);
+    }
+    .voice-orb[data-state="listening"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(56, 189, 248, 0.85), rgba(12, 74, 110, 0.85));
+      box-shadow: 0 0 44px rgba(56, 189, 248, 0.4);
+      transform: scale(calc(1 + var(--voice-level) * 0.15));
+      animation-duration: 2s;
+    }
+    .voice-orb[data-state="speaking"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(45, 212, 191, 0.9), rgba(19, 78, 74, 0.9));
+      box-shadow: 0 0 50px var(--accent-glow);
+      transform: scale(calc(1 + var(--voice-level) * 0.2));
+      animation-duration: 1.5s;
+    }
+    .voice-orb[data-state="muted"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(251, 191, 36, 0.55), rgba(120, 53, 15, 0.75));
+    }
+    .voice-orb[data-state="error"] .orb-fluid {
+      background: radial-gradient(circle at 30% 30%, rgba(248, 113, 113, 0.75), rgba(127, 29, 29, 0.9));
+      box-shadow: 0 0 36px var(--danger-glow);
+    }
+    
+    .voice-orb[data-state="speaking"] .orb-core,
+    .voice-orb[data-state="listening"] .orb-core {
+      opacity: calc(0.1 + var(--voice-level) * 0.4);
+    }
+
+    .orb-wave {
+      position: absolute;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+    .orb-wave span {
+      width: 4px;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 4px;
+      transition: height 0.05s ease;
+      box-shadow: 0 0 8px rgba(255,255,255,0.5);
+    }
+    .voice-orb[data-state="idle"] .orb-wave span { opacity: 0; }
+    
+    .voice-state-text { text-align: center; }
+    .voice-state-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+    .voice-state-detail { font-size: 12px; color: var(--muted); }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* Buttons — keep .btn on session toggle or SVG fills the sidebar */
+    .control-bar { display: flex; flex-direction: column; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; min-height: 48px; height: 48px; padding: 0 16px;
+      border-radius: 12px; font-size: 14px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all var(--transition); border: 1px solid transparent; outline: none;
+      white-space: nowrap;
+    }
+    .btn svg {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      display: block;
+    }
+    
+    .btn-session-start {
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: #042f2e;
+      box-shadow: 0 4px 14px var(--accent-glow); border: 1px solid rgba(255,255,255,0.12);
+    }
+    .btn-session-start:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(20, 184, 166, 0.45); }
+    .btn-session-end {
+      background: var(--danger-soft); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.35);
+    }
+    .btn-session-end:hover:not(:disabled) { background: rgba(248, 113, 113, 0.2); }
+    
+    .btn-mute { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-mute:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-light); }
+    .btn-mute[aria-pressed="true"] { background: rgba(251, 191, 36, 0.12); color: var(--warn); border-color: rgba(251, 191, 36, 0.35); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+    /* Status LEDs */
+    .status-list {
+      list-style: none; display: flex; flex-direction: column; gap: 12px;
+      padding: 16px; background: rgba(0, 0, 0, 0.2); border-radius: 12px; border: 1px solid var(--border);
+    }
+    .status-item { display: flex; align-items: center; font-size: 13px; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.2);
+      margin-right: 12px; transition: all var(--transition); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+    }
+    .status-item[data-active="true"] .status-dot {
+      background: var(--ok); box-shadow: 0 0 10px var(--ok-glow), inset 0 1px 2px rgba(255,255,255,0.5); transform: scale(1.2);
+    }
+    .status-item[data-error="true"] .status-dot { background: var(--danger); box-shadow: 0 0 10px var(--danger-glow); }
+    .status-label { color: var(--muted); flex: 1; }
+    .status-value { font-weight: 500; color: var(--text); }
+
+    /* Accordion Settings */
+    .session-settings summary {
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px; color: var(--muted); padding: 8px 0; transition: color var(--transition);
+    }
+    .session-settings summary:hover { color: var(--text); }
+    .settings-grid { display: grid; gap: 8px; padding-top: 12px; }
+    .setting-row { display: flex; justify-content: space-between; font-size: 12px; }
+    .setting-row span:first-child { color: var(--muted); }
+    .pill {
+      background: var(--surface); border: 1px solid var(--border); padding: 2px 8px;
+      border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       Step 3 — Main Stage & Auxiliary
+       ═══════════════════════════════════════════════════ */
+    .activity-stack { display: flex; flex-direction: column; gap: 24px; height: calc(100vh - 112px); }
+
+    .panel-header {
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.01);
+    }
+    .panel-header h2 { font-size: 15px; font-weight: 600; color: #fff; }
+    .panel-badge {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 4px 8px; border-radius: 6px; background: var(--surface); color: var(--muted);
+      border: 1px solid var(--border); transition: all var(--transition);
+    }
+    .panel-badge.connected { background: rgba(52, 211, 153, 0.12); color: var(--ok); border-color: rgba(52, 211, 153, 0.35); }
+
+    /* Prompting transcript — assistant (prompt) left / teal; caller right / sky */
+    .transcript-section { flex: 1; min-height: 0; }
+    .transcript {
+      flex: 1; padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth;
+    }
+    .transcript.empty { justify-content: center; align-items: center; color: var(--muted); font-size: 14px; }
+    .transcript-turn {
+      display: flex; flex-direction: column; max-width: 82%;
+      animation: bubble-in 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards; transform-origin: bottom;
+    }
+    @keyframes bubble-in {
+      from { opacity: 0; transform: translateY(8px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    
+    .transcript-turn.user { align-self: flex-end; align-items: flex-end; }
+    .transcript-turn.assistant { align-self: flex-start; align-items: flex-start; }
+    
+    .transcript-speaker {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 5px; padding: 0 2px;
+    }
+    .transcript-turn.assistant .transcript-speaker { color: var(--prompt); }
+    .transcript-turn.user .transcript-speaker { color: var(--caller); }
+    
+    .transcript-text {
+      padding: 12px 16px; border-radius: 14px; font-size: 14px; line-height: 1.55;
+      position: relative; overflow-wrap: anywhere;
+    }
+    .transcript-turn.assistant .transcript-text {
+      background: var(--prompt-soft);
+      border: 1px solid var(--prompt-border);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+    }
+    .transcript-turn.user .transcript-text {
+      background: var(--caller-fill);
+      border: 1px solid var(--caller-border);
+      color: #e0f2fe;
+      border-bottom-right-radius: 4px;
+    }
+    .transcript-turn.pending .transcript-text::after {
+      content: ''; position: absolute; bottom: -6px; right: 16px; width: 4px; height: 4px; border-radius: 50%;
+      background: currentColor; animation: typing 1s infinite; opacity: 0.5;
+    }
+    .transcript-turn.assistant.pending .transcript-text::after { left: 16px; right: auto; }
+    
+    @keyframes typing { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+    /* Demoted Backend Actions & Diagnostics */
+    .actions-section { height: 250px; flex-shrink: 0; }
+    .actions-wrapper { flex: 1; overflow-y: auto; padding: 0; }
+    .actions-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .actions-table th {
+      text-align: left; padding: 12px 24px; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
+    }
+    .actions-table td { padding: 12px 24px; border-bottom: 1px solid var(--border); color: var(--text); }
+    .actions-table tbody tr { transition: background var(--transition); }
+    .actions-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+    .actions-table td:first-child { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 100px; }
+    
+    .action-status-pill { font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px; text-transform: uppercase; border: 1px solid transparent; }
+    .action-status-pill.running { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3); }
+    .action-status-pill.complete { background: rgba(52, 211, 153, 0.12); color: var(--ok); border-color: rgba(52, 211, 153, 0.35); }
+    .action-status-pill.failed { background: var(--danger-soft); color: var(--danger); border-color: rgba(248, 113, 113, 0.35); }
+
+    .empty-state { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    .diagnostics-panel { border-top: 1px solid var(--border); background: rgba(0,0,0,0.3); }
+    .diagnostics-header { padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .diagnostics-header h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .diagnostics-toggle { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 4px; transition: all var(--transition); }
+    .diagnostics-toggle:hover { background: var(--surface-hover); color: var(--text); }
+    .diagnostics-toggle svg { width: 16px; height: 16px; transition: transform var(--transition); }
+    .diagnostics-toggle.collapsed svg { transform: rotate(-90deg); }
+    .diagnostics-body { max-height: 250px; overflow-y: auto; transition: max-height var(--transition); }
+    .diagnostics-body.collapsed { max-height: 0; overflow: hidden; }
+    .events { padding: 0 24px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: #7dd3fc; }
+
+    /* ═══════════════════════════════════════════════════
+       Utilities & Loading
+       ═══════════════════════════════════════════════════ */
+    .btn-spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(4, 47, 46, 0.25); border-top-color: #042f2e;
+      border-radius: 50%; animation: btn-spin 0.6s linear infinite; flex-shrink: 0;
+    }
+    @keyframes btn-spin { to { transform: rotate(360deg); } }
+
+    .session-ended-marker {
+      text-align: center; padding: 16px 0; color: var(--muted); font-size: 12px; font-weight: 500;
+      letter-spacing: 0.05em; text-transform: uppercase; display: flex; align-items: center; gap: 12px;
+    }
+    .session-ended-marker::before, .session-ended-marker::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .error { margin-top: 16px; padding: 12px; background: var(--danger-soft); border: 1px solid rgba(248, 113, 113, 0.35); color: #fecaca; border-radius: 8px; font-size: 13px; display: none; }
+    .error.visible { display: block; }
+    audio { display: none; }
+
+    /* Custom Scrollbar for Glass UI */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    
+    @media (max-width: 1024px) {
+      main { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; margin-bottom: 24px; }
+      .activity-stack { height: auto; }
+    }
+
+  </style>
+</head>
+<body>
+  <!-- ═══ Header ═══ -->
+  <header>
+    <div class="header-left">
+      <h1>Voice Lab</h1>
+      <span class="header-divider"></span>
+      <span class="header-company">__DASHBOARD_COMPANY_PLACEHOLDER__</span>
+    </div>
+    <div class="header-right">
+      <span class="mode-chip" id="mode-chip">Modern WebRTC</span>
+      <a id="dashboard-link" href="/dashboard" class="header-link">Call Records</a>
+    </div>
+  </header>
+
+  <!-- ═══ Main Content ═══ -->
+  <main>
+    <!-- ─── Left Column: Control Center ─── -->
+    <section class="sidebar glass-panel">
+      
+      <div class="orb-container">
+        <div class="voice-orb" id="voice-orb" data-state="idle" aria-label="Voice state: Ready to test">
+          <div class="orb-fluid"></div>
+          <div class="orb-core"></div>
+          <div class="orb-wave" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <span id="voice-orb-label" class="sr-only">Voice state: Ready to test</span>
+        <div class="voice-state-text" aria-hidden="true">
+          <div class="voice-state-title" id="voice-state-title">Ready to test</div>
+          <div class="voice-state-detail" id="voice-state-detail">Not connected</div>
+        </div>
+      </div>
+
+      <div class="control-bar">
+        <button id="session-toggle-btn" class="btn btn-session-start" type="button" title="Start Session (Space)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="6 3 20 12 6 21 6 3"></polygon>
+          </svg>
+          <span>Start Session</span>
+        </button>
+        <button id="mute-toggle" class="btn btn-mute" type="button" disabled aria-pressed="false" title="Toggle Mute (M)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg>
+          <span>Mute Mic</span>
+        </button>
+      </div>
+
+      <ul class="status-list">
+        <li class="status-item" id="status-connection" data-active="false">
+          <span class="status-dot"></span>
+          <span class="status-label">Connection</span>
+          <span class="status-value" id="connection-state">Not connected</span>
+        </li>
+        <li class="status-item" id="status-mic" data-active="false">
+          <span class="status-dot"></span>
+          <span class="status-label">Microphone</span>
+          <span class="status-value" id="mic-state">Not requested</span>
+        </li>
+        <li class="status-item" id="status-input" data-active="false">
+          <span class="status-dot"></span>
+          <span class="status-label">Audio In</span>
+          <span class="status-value" id="listening-state">Waiting</span>
+        </li>
+        <li class="status-item" id="status-assistant" data-active="false">
+          <span class="status-dot"></span>
+          <span class="status-label">Assistant</span>
+          <span class="status-value" id="speaking-state">Silent</span>
+        </li>
+        <li class="status-item" id="status-duration" data-active="false">
+          <span class="status-dot"></span>
+          <span class="status-label">Duration</span>
+          <span class="status-value" id="duration-state">00:00</span>
+        </li>
+      </ul>
+
+      <details class="session-settings">
+        <summary>
+          <span>Session settings</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="settings-grid">
+          <div class="setting-row"><span>Model</span><span class="pill" id="model-pill">Loaded after start</span></div>
+          <div class="setting-row"><span>Voice</span><span class="pill" id="voice-pill">Loaded after start</span></div>
+          <div class="setting-row"><span>Preset</span><span class="pill" id="preset-pill">Loaded after start</span></div>
+          <div class="setting-row"><span>VAD</span><span class="pill" id="vad-pill">Loaded after start</span></div>
+        </div>
+      </details>
+      <div class="error" id="error-box"></div>
+    </section>
+
+    <!-- ─── Right Column: Activity Stack ─── -->
+    <div class="activity-stack">
+      <section class="transcript-section glass-panel">
+        <div class="panel-header">
+          <h2>Transcript</h2>
+          <span id="transcript-state" class="panel-badge">Waiting</span>
+        </div>
+        <div id="transcript-panel" class="transcript empty">Live transcript will appear here once speech is detected.</div>
+      </section>
+
+      <section class="actions-section glass-panel">
+        <div class="panel-header">
+          <h2>Backend Actions</h2>
+          <span id="tool-state" class="panel-badge">Idle</span>
+        </div>
+        <div class="actions-wrapper" id="actions-wrapper">
+          <table class="actions-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Action</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tool-panel"></tbody>
+          </table>
+          <div id="tool-panel-empty" class="empty-state">No backend actions yet.</div>
+        </div>
+        
+        <div class="diagnostics-panel" id="diagnostics-panel">
+          <div class="diagnostics-header">
+            <h3>Developer Diagnostics</h3>
+            <button id="diagnostics-toggle" class="diagnostics-toggle collapsed" type="button" aria-label="Toggle diagnostics">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+          <div class="diagnostics-body collapsed" id="diagnostics-body">
+            <div id="event-log" class="events"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <audio id="remote-audio" autoplay></audio>
+
+  <script>
+    const DASHBOARD_KEY = "__DASHBOARD_KEY_PLACEHOLDER__";
+
+    /* ── Element References ── */
+    const sessionToggleBtn = document.getElementById("session-toggle-btn");
+    const muteToggle = document.getElementById("mute-toggle");
+    const errorBox = document.getElementById("error-box");
+    const remoteAudio = document.getElementById("remote-audio");
+    const eventLog = document.getElementById("event-log");
+    const transcriptPanel = document.getElementById("transcript-panel");
+    const toolPanel = document.getElementById("tool-panel");
+    const toolPanelEmpty = document.getElementById("tool-panel-empty");
+    const actionsWrapper = document.getElementById("actions-wrapper");
+    const voiceOrb = document.getElementById("voice-orb");
+    const voiceOrbLabel = document.getElementById("voice-orb-label");
+    const orbWaveBars = Array.from(document.querySelectorAll(".orb-wave span"));
+    const diagnosticsToggle = document.getElementById("diagnostics-toggle");
+    const diagnosticsBody = document.getElementById("diagnostics-body");
+    const modeChip = document.getElementById("mode-chip");
+    const stateEls = {
+      transcriptBadge: document.getElementById("transcript-state"),
+      toolBadge: document.getElementById("tool-state"),
+      voiceTitle: document.getElementById("voice-state-title"),
+      voiceDetail: document.getElementById("voice-state-detail"),
+      connection: document.getElementById("connection-state"),
+      mic: document.getElementById("mic-state"),
+      listening: document.getElementById("listening-state"),
+      speaking: document.getElementById("speaking-state"),
+      duration: document.getElementById("duration-state"),
+      model: document.getElementById("model-pill"),
+      voice: document.getElementById("voice-pill"),
+      preset: document.getElementById("preset-pill"),
+      vad: document.getElementById("vad-pill")
+    };
+
+    /* ── Session State ── */
+    let pc = null;
+    let dc = null;
+    let localStream = null;
+    let currentSession = null;
+    let starting = false;
+    let startedAt = 0;
+    let timerId = null;
+    let orbState = "idle";
+    let connectionStateRaw = "idle";
+    let micStateRaw = "unknown";
+    let listeningActive = false;
+    let speakingActive = false;
+    let muted = false;
+    let audioContext = null;
+    let micAnalyser = null;
+    let remoteAnalyser = null;
+    let micSource = null;
+    let remoteSource = null;
+    let meterFrame = null;
+    let meterData = null;
+    const handledToolCalls = new Set();
+    const inFlightToolCalls = new Map();
+    const queuedRealtimeToolCalls = new Map();
+    let toolFlushTimer = null;
+    const transcriptTurns = new Map();
+
+    /* ── Label / Copy Maps ── */
+    const connectionLabels = {
+      idle: "Not connected",
+      "creating session": "Creating session",
+      "requesting microphone": "Requesting mic",
+      negotiating: "Negotiating",
+      connecting: "Connecting",
+      connected: "Connected",
+      disconnected: "Disconnected",
+      failed: "Failed",
+      closed: "Closed"
+    };
+    const micLabels = {
+      unknown: "Not requested",
+      granted: "Mic on",
+      muted: "Muted",
+      denied: "Permission denied"
+    };
+    const orbCopy = {
+      idle: ["Ready to test", "Not connected"],
+      connecting: ["Connecting", "Creating secure Realtime session"],
+      ready: ["Connected", "Speak when ready"],
+      listening: ["Listening", "Microphone input detected"],
+      speaking: ["Assistant speaking", "Audio response in progress"],
+      muted: ["Muted", "Microphone is off"],
+      error: ["Needs attention", "Check the error and retry"]
+    };
+
+    /* ── Utility Functions ── */
+
+    function apiUrl(path) {
+      if (!DASHBOARD_KEY) return path;
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set("key", DASHBOARD_KEY);
+      return url.toString();
+    }
+
+    function setError(message) {
+      errorBox.textContent = message || "";
+      errorBox.classList.toggle("visible", Boolean(message));
+      if (message) {
+        setOrbState("error");
+      } else {
+        refreshOrbState();
+      }
+    }
+
+    function logEvent(label, payload) {
+      const line = `[${new Date().toLocaleTimeString()}] ${label} ${payload ? JSON.stringify(payload).slice(0, 1600) : ""}`;
+      eventLog.textContent = `${line}\n${eventLog.textContent}`.slice(0, 60000);
+    }
+
+    /* ── Tool Panel (Table Rows) ── */
+
+    function appendToolRow(action, status) {
+      toolPanelEmpty.style.display = "none";
+      const tr = document.createElement("tr");
+      const tdTime = document.createElement("td");
+      tdTime.textContent = new Date().toLocaleTimeString();
+      const tdAction = document.createElement("td");
+      tdAction.textContent = action;
+      const tdStatus = document.createElement("td");
+      const pill = document.createElement("span");
+      pill.className = `action-status-pill ${status}`;
+      pill.textContent = status === "running" ? "Running" : status === "failed" ? "Failed" : "Complete";
+      tdStatus.appendChild(pill);
+      tr.appendChild(tdTime);
+      tr.appendChild(tdAction);
+      tr.appendChild(tdStatus);
+      toolPanel.appendChild(tr);
+      if (actionsWrapper) actionsWrapper.scrollTop = actionsWrapper.scrollHeight;
+      return tr;
+    }
+
+    function updateToolRow(tr, action, status) {
+      if (!tr) return;
+      const cells = tr.querySelectorAll("td");
+      if (cells[0]) cells[0].textContent = new Date().toLocaleTimeString();
+      if (cells[1]) cells[1].textContent = action;
+      if (cells[2]) {
+        const pill = cells[2].querySelector(".action-status-pill");
+        if (pill) {
+          pill.className = `action-status-pill ${status}`;
+          pill.textContent = status === "running" ? "Running" : status === "failed" ? "Failed" : "Complete";
+        }
+      }
+    }
+
+    function resetToolPanel() {
+      toolPanel.innerHTML = "";
+      toolPanelEmpty.style.display = "";
+      setBadge(stateEls.toolBadge, "Idle", "");
+    }
+
+    /* ── Transcript ── */
+
+    function resetTranscriptPanel() {
+      transcriptTurns.clear();
+      transcriptPanel.classList.add("empty");
+      transcriptPanel.textContent = "Live transcript will appear here once speech is detected.";
+      setBadge(stateEls.transcriptBadge, "Waiting", "");
+    }
+
+    function ensureTranscriptTurn(speaker, key) {
+      const safeKey = `${speaker}:${key || "current"}`;
+      let turn = transcriptTurns.get(safeKey);
+      if (turn) return turn;
+      if (transcriptPanel.classList.contains("empty")) {
+        transcriptPanel.classList.remove("empty");
+        transcriptPanel.textContent = "";
+      }
+      const row = document.createElement("div");
+      row.className = `transcript-turn ${speaker} pending`;
+      row.dataset.transcriptKey = safeKey;
+      const speakerLabel = document.createElement("span");
+      speakerLabel.className = "transcript-speaker";
+      speakerLabel.textContent = speaker === "user" ? "You" : "Assistant";
+      const text = document.createElement("span");
+      text.className = "transcript-text";
+      row.appendChild(speakerLabel);
+      row.appendChild(text);
+      transcriptPanel.appendChild(row);
+      turn = {row, text, value: ""};
+      transcriptTurns.set(safeKey, turn);
+      setBadge(stateEls.transcriptBadge, "Live", "connected");
+      return turn;
+    }
+
+    function appendTranscriptDelta(speaker, key, delta) {
+      if (!delta) return;
+      const turn = ensureTranscriptTurn(speaker, key);
+      turn.value += delta;
+      turn.text.textContent = turn.value;
+      turn.row.classList.add("pending");
+      const nearBottom = transcriptPanel.scrollHeight - transcriptPanel.scrollTop - transcriptPanel.clientHeight < 60;
+      if (nearBottom) transcriptPanel.scrollTop = transcriptPanel.scrollHeight;
+    }
+
+    function completeTranscriptTurn(speaker, key, transcript) {
+      const turn = ensureTranscriptTurn(speaker, key);
+      if (transcript) {
+        turn.value = transcript;
+        turn.text.textContent = transcript;
+      }
+      turn.row.classList.remove("pending");
+      const nearBottom = transcriptPanel.scrollHeight - transcriptPanel.scrollTop - transcriptPanel.clientHeight < 60;
+      if (nearBottom) transcriptPanel.scrollTop = transcriptPanel.scrollHeight;
+      setBadge(stateEls.transcriptBadge, "Live", "connected");
+    }
+
+    /* ── Badge & State ── */
+
+    function setBadge(el, text, variant) {
+      el.textContent = text;
+      el.classList.toggle("connected", variant === "connected");
+      el.classList.toggle("error", variant === "error");
+    }
+
+    function setOrbState(value) {
+      orbState = value || "idle";
+      if (voiceOrb) voiceOrb.dataset.state = orbState;
+      const copy = orbCopy[orbState] || orbCopy.idle;
+      const label = `Voice state: ${copy[0]}`;
+      if (voiceOrb) voiceOrb.setAttribute("aria-label", label);
+      if (voiceOrbLabel) voiceOrbLabel.textContent = label;
+      if (stateEls.voiceTitle) stateEls.voiceTitle.textContent = copy[0];
+      if (stateEls.voiceDetail) stateEls.voiceDetail.textContent = copy[1];
+    }
+
+    function refreshOrbState() {
+      if (errorBox.classList.contains("visible")) {
+        setOrbState("error");
+        return;
+      }
+      if (muted && !muteToggle.disabled) {
+        setOrbState("muted");
+        return;
+      }
+      if (speakingActive) {
+        setOrbState("speaking");
+        return;
+      }
+      if (listeningActive) {
+        setOrbState("listening");
+        return;
+      }
+      if (["creating session", "requesting microphone", "negotiating", "connecting"].includes(connectionStateRaw)) {
+        setOrbState("connecting");
+      } else if (connectionStateRaw === "connected" || (pc && pc.connectionState === "connected")) {
+        setOrbState("ready");
+      } else {
+        setOrbState("idle");
+      }
+    }
+
+    function setConnection(value) {
+      connectionStateRaw = value || "idle";
+      stateEls.connection.textContent = connectionLabels[connectionStateRaw] || connectionStateRaw;
+      const isConnected = connectionStateRaw === "connected";
+      document.getElementById("status-connection").dataset.active = String(isConnected);
+      document.getElementById("status-connection").dataset.error = String(["failed", "disconnected"].includes(connectionStateRaw));
+      if (isConnected) {
+        setBadge(stateEls.transcriptBadge, "Live", "connected");
+      } else if (transcriptTurns.size > 0) {
+        setBadge(stateEls.transcriptBadge, "Ended", "");
+      } else {
+        setBadge(stateEls.transcriptBadge, "Waiting", "");
+      }
+      stateEls.transcriptBadge.classList.toggle("connected", isConnected);
+      modeChip.classList.toggle("connected", isConnected);
+      refreshOrbState();
+    }
+
+    function setMic(value) {
+      micStateRaw = value || "unknown";
+      stateEls.mic.textContent = micLabels[micStateRaw] || micStateRaw;
+      document.getElementById("status-mic").dataset.active = String(micStateRaw === "granted");
+      document.getElementById("status-mic").dataset.error = String(micStateRaw === "denied");
+      refreshOrbState();
+    }
+
+    function setListening(value) {
+      listeningActive = Boolean(value);
+      stateEls.listening.textContent = listeningActive ? "Listening" : "Waiting";
+      document.getElementById("status-input").dataset.active = String(listeningActive);
+      refreshOrbState();
+    }
+
+    function setSpeaking(value) {
+      speakingActive = Boolean(value);
+      stateEls.speaking.textContent = speakingActive ? "Speaking" : "Silent";
+      document.getElementById("status-assistant").dataset.active = String(speakingActive);
+      refreshOrbState();
+    }
+
+    function updateMuteButton() {
+      muteToggle.setAttribute("aria-pressed", muted ? "true" : "false");
+      muteToggle.innerHTML = muted
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="2" y1="2" x2="22" y2="22"></line>
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12"></path>
+            <path d="M15 9.34V5a3 3 0 0 0-5.94-.6"></path>
+            <path d="M19 10v2a7 7 0 0 1-.82 3.29"></path>
+            <path d="M5 10v2a7 7 0 0 0 10.24 6.2"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg><span>Unmute</span>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg><span>Mute Mic</span>`;
+    }
+
+    /* ── Audio Metering ── */
+
+    function ensureAudioContext() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      if (!audioContext) {
+        audioContext = new AudioContextClass();
+        meterData = new Uint8Array(256);
+      }
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+      return audioContext;
+    }
+
+    function createAnalyser(stream) {
+      const ctx = ensureAudioContext();
+      if (!ctx || !stream) return null;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = .78;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      startMeterLoop();
+      return {analyser, source};
+    }
+
+    function attachMicMeter(stream) {
+      detachMeter("mic");
+      const meter = createAnalyser(stream);
+      if (!meter) return;
+      micAnalyser = meter.analyser;
+      micSource = meter.source;
+    }
+
+    function attachRemoteMeter(stream) {
+      detachMeter("remote");
+      const meter = createAnalyser(stream);
+      if (!meter) return;
+      remoteAnalyser = meter.analyser;
+      remoteSource = meter.source;
+    }
+
+    function detachMeter(kind) {
+      const source = kind === "mic" ? micSource : remoteSource;
+      try { if (source) source.disconnect(); } catch (_err) {}
+      if (kind === "mic") {
+        micSource = null;
+        micAnalyser = null;
+      } else {
+        remoteSource = null;
+        remoteAnalyser = null;
+      }
+    }
+
+    function readLevel(analyser) {
+      if (!analyser || !meterData) return 0;
+      analyser.getByteTimeDomainData(meterData);
+      let sum = 0;
+      for (let i = 0; i < meterData.length; i += 1) {
+        const sample = (meterData[i] - 128) / 128;
+        sum += sample * sample;
+      }
+      return Math.min(1, Math.sqrt(sum / meterData.length) * 4.6);
+    }
+
+    function setOrbLevel(level) {
+      const safeLevel = Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0;
+      voiceOrb.style.setProperty("--voice-level", safeLevel.toFixed(3));
+      orbWaveBars.forEach((bar, index) => {
+        const phase = Math.sin((Date.now() / 180) + index * .72) * .18;
+        const height = 20 + Math.round((safeLevel + phase + .12) * 50);
+        bar.style.height = `${Math.max(14, Math.min(74, height))}px`;
+      });
+    }
+
+    function startMeterLoop() {
+      if (meterFrame) return;
+      const tick = () => {
+        const micLevel = muted ? 0 : readLevel(micAnalyser);
+        const remoteLevel = readLevel(remoteAnalyser);
+        const activeLevel = orbState === "speaking" ? remoteLevel : Math.max(micLevel, remoteLevel);
+        setOrbLevel(activeLevel);
+        meterFrame = window.requestAnimationFrame(tick);
+      };
+      meterFrame = window.requestAnimationFrame(tick);
+    }
+
+    async function stopAudioMeters() {
+      if (meterFrame) {
+        window.cancelAnimationFrame(meterFrame);
+        meterFrame = null;
+      }
+      detachMeter("mic");
+      detachMeter("remote");
+      setOrbLevel(0);
+      if (audioContext) {
+        try { await audioContext.close(); } catch (_err) {}
+      }
+      audioContext = null;
+      meterData = null;
+    }
+
+    /* ── Metadata & Timer ── */
+
+    function setMetadata(metadata) {
+      const vad = metadata ? `${metadata.vad_mode || "-"} / ${metadata.vad_eagerness || "-"}` : "Loaded after start";
+      stateEls.model.textContent = metadata?.model || "Loaded after start";
+      stateEls.voice.textContent = metadata?.voice || "Loaded after start";
+      stateEls.preset.textContent = metadata?.preset || "Loaded after start";
+      stateEls.vad.textContent = vad;
+    }
+
+    function formatDuration(seconds) {
+      const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+      const ss = String(seconds % 60).padStart(2, "0");
+      return `${mm}:${ss}`;
+    }
+
+    function startTimer() {
+      startedAt = Date.now();
+      clearInterval(timerId);
+      document.getElementById("status-duration").dataset.active = "true";
+      timerId = setInterval(() => {
+        stateEls.duration.textContent = formatDuration(Math.floor((Date.now() - startedAt) / 1000));
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerId);
+      timerId = null;
+      document.getElementById("status-duration").dataset.active = "false";
+    }
+
+    /* ── Session Toggle Button Helpers ── */
+
+    function setToggleBtnStart() {
+      sessionToggleBtn.className = "btn btn-session-start";
+      sessionToggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="6 3 20 12 6 21 6 3"></polygon>
+      </svg><span>Start Session</span>`;
+      sessionToggleBtn.disabled = false;
+    }
+
+    function setToggleBtnEnd() {
+      sessionToggleBtn.className = "btn btn-session-end";
+      sessionToggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+      </svg><span>End Session</span>`;
+      sessionToggleBtn.disabled = false;
+    }
+
+    /* ── WebRTC Session ── */
+
+    async function fetchBrowserSession() {
+      const response = await fetch(apiUrl("/api/realtime/browser-session"), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({})
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || "Failed to create browser Realtime session.");
+      }
+      if (!payload.client_secret || !payload.client_secret.value) {
+        throw new Error("Browser credential response was missing the ephemeral client secret.");
+      }
+      return payload;
+    }
+
+    /* ── Tool Handling ── */
+
+    function parseToolOutput(output) {
+      if (!output || typeof output !== "string") return null;
+      try {
+        const parsed = JSON.parse(output);
+        return parsed && typeof parsed === "object" ? parsed : null;
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    function formatToolResult(name, payload) {
+      const duplicate = payload.duplicate ? " duplicate" : "";
+      const item = payload.item || {};
+      const parsed = parseToolOutput(item.output);
+      if (!parsed) {
+        return `Tool ${name} returned${duplicate}.`;
+      }
+      const status = parsed.success === false ? "failed" : "ok";
+      const bits = [`Tool ${name} ${status}${duplicate}`];
+      if (parsed.event_id) bits.push(`event ${parsed.event_id}`);
+      if (typeof parsed.remaining_booking_count === "number") {
+        bits.push(`${parsed.remaining_booking_count} booking${parsed.remaining_booking_count === 1 ? "" : "s"} still on file`);
+      }
+      if (parsed.message) bits.push(parsed.message);
+      return bits.join(" - ");
+    }
+
+    function sendToolResponseCreate() {
+      if (toolFlushTimer) {
+        window.clearTimeout(toolFlushTimer);
+        toolFlushTimer = null;
+      }
+      if (dc && dc.readyState === "open") {
+        dc.send(JSON.stringify({type: "response.create"}));
+      }
+    }
+
+    async function handleToolCall(event, options = {}) {
+      const callId = event.call_id || event.item_id || event.id;
+      const name = event.name;
+      if (!currentSession || !callId || !name) return false;
+      if (inFlightToolCalls.has(callId)) return inFlightToolCalls.get(callId);
+      if (handledToolCalls.has(callId)) return false;
+      const task = executeToolCall(event, options).finally(() => {
+        inFlightToolCalls.delete(callId);
+      });
+      inFlightToolCalls.set(callId, task);
+      return task;
+    }
+
+    async function executeToolCall(event, options = {}) {
+      const callId = event.call_id || event.item_id || event.id;
+      const name = event.name;
+      handledToolCalls.add(callId);
+      let args = event.arguments || {};
+      if (typeof args === "string") {
+        try { args = JSON.parse(args); } catch (_err) { args = {"_raw": args}; }
+      }
+      setBadge(stateEls.toolBadge, "Running", "");
+      const runningRow = appendToolRow(`Calling ${name}`, "running");
+      const response = await fetch(apiUrl("/api/realtime/browser-tool-call"), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          browser_session_id: currentSession.browser_session_id,
+          call_id: callId,
+          name,
+          arguments: args
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setBadge(stateEls.toolBadge, "Failed", "error");
+        updateToolRow(runningRow, `Tool ${name} failed: ${payload.detail || response.status}`, "failed");
+        return false;
+      }
+      const toolOutput = parseToolOutput((payload.item || {}).output);
+      const toolStatus = toolOutput && toolOutput.success === false ? "failed" : "complete";
+      setBadge(stateEls.toolBadge, toolStatus === "complete" ? "Complete" : "Failed", toolStatus === "complete" ? "connected" : "error");
+      updateToolRow(runningRow, formatToolResult(name, payload), toolStatus);
+      if (dc && dc.readyState === "open" && payload.item) {
+        dc.send(JSON.stringify({type: "conversation.item.create", item: payload.item}));
+        if (payload.trigger_response && !options.deferResponseCreate) {
+          sendToolResponseCreate();
+        }
+      }
+      return Boolean(payload.trigger_response);
+    }
+
+    async function handleToolCallsBatch(calls) {
+      const uniqueCalls = [];
+      const seen = new Set();
+      for (const call of calls) {
+        const callId = call.call_id || call.item_id || call.id;
+        if (!callId || seen.has(callId)) continue;
+        seen.add(callId);
+        queuedRealtimeToolCalls.delete(callId);
+        uniqueCalls.push(call);
+      }
+      if (!uniqueCalls.length) return;
+      if (toolFlushTimer) {
+        window.clearTimeout(toolFlushTimer);
+        toolFlushTimer = null;
+      }
+      const results = await Promise.all(uniqueCalls.map((call) => handleToolCall(call, {deferResponseCreate: true})));
+      if (results.some(Boolean)) sendToolResponseCreate();
+    }
+
+    function flushQueuedRealtimeToolCalls() {
+      const calls = Array.from(queuedRealtimeToolCalls.values());
+      queuedRealtimeToolCalls.clear();
+      handleToolCallsBatch(calls).catch((err) => {
+        setBadge(stateEls.toolBadge, "Failed", "error");
+        appendToolRow(`Tool handling failed: ${err.message}`, "failed");
+      });
+    }
+
+    function queueRealtimeToolCall(event) {
+      const callId = event.call_id || event.item_id || event.id;
+      if (!callId) return;
+      queuedRealtimeToolCalls.set(callId, event);
+      if (toolFlushTimer) window.clearTimeout(toolFlushTimer);
+      toolFlushTimer = window.setTimeout(flushQueuedRealtimeToolCalls, 150);
+    }
+
+    /* ── Realtime Event Dispatch ── */
+
+    function handleRealtimeEvent(event) {
+      logEvent(event.type || "event", event);
+      if (event.type === "input_audio_buffer.speech_started") {
+        setListening(true);
+        setSpeaking(false);
+      } else if (event.type === "input_audio_buffer.speech_stopped") {
+        setListening(false);
+      } else if (event.type === "response.audio.delta") {
+        setSpeaking(true);
+      } else if (event.type === "response.audio.done" || event.type === "response.done") {
+        setSpeaking(false);
+      }
+      if (
+        (event.type === "response.output_audio_transcript.delta" ||
+          event.type === "response.audio_transcript.delta" ||
+          event.type === "response.output_text.delta") &&
+        event.delta
+      ) {
+        appendTranscriptDelta("assistant", event.item_id || event.response_id || "assistant-current", event.delta);
+      }
+      if (
+        event.type === "response.output_audio_transcript.done" ||
+        event.type === "response.audio_transcript.done" ||
+        event.type === "response.output_text.done"
+      ) {
+        completeTranscriptTurn(
+          "assistant",
+          event.item_id || event.response_id || "assistant-current",
+          event.transcript || event.text || ""
+        );
+      }
+      if (event.type === "conversation.item.input_audio_transcription.delta" && event.delta) {
+        appendTranscriptDelta("user", event.item_id || "user-current", event.delta);
+      }
+      if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript) {
+        completeTranscriptTurn("user", event.item_id || "user-current", event.transcript);
+      }
+      if (event.type === "response.function_call_arguments.done") {
+        queueRealtimeToolCall(event);
+      }
+      if (event.type === "response.done" && event.response && Array.isArray(event.response.output)) {
+        const calls = event.response.output.filter((item) => item && item.type === "function_call");
+        if (calls.length) {
+          handleToolCallsBatch(calls).catch((err) => {
+            setBadge(stateEls.toolBadge, "Failed", "error");
+            appendToolRow(`Tool handling failed: ${err.message}`, "failed");
+          });
+        }
+      }
+    }
+
+    /* ── Start / End Session ── */
+
+    async function startSession() {
+      if (starting || pc) return;
+      starting = true;
+      sessionToggleBtn.disabled = true;
+      sessionToggleBtn.innerHTML = `<div class="btn-spinner"></div><span>Connecting…</span>`;
+      setError("");
+      setConnection("creating session");
+      try {
+        resetTranscriptPanel();
+        resetToolPanel();
+        currentSession = await fetchBrowserSession();
+        setMetadata(currentSession.metadata || {});
+        setConnection("requesting microphone");
+        localStream = await navigator.mediaDevices.getUserMedia({audio: true});
+        muted = false;
+        updateMuteButton();
+        setMic("granted");
+        attachMicMeter(localStream);
+        pc = new RTCPeerConnection();
+        pc.onconnectionstatechange = () => {
+          setConnection(pc.connectionState);
+          if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+            if (pc.connectionState !== "closed") setError(`WebRTC connection ${pc.connectionState}.`);
+          }
+        };
+        pc.ontrack = (event) => {
+          remoteAudio.srcObject = event.streams[0];
+          attachRemoteMeter(event.streams[0]);
+        };
+        for (const track of localStream.getAudioTracks()) {
+          pc.addTrack(track, localStream);
+        }
+        dc = pc.createDataChannel("oai-events");
+        dc.onopen = () => {
+          logEvent("data_channel.open");
+          setConnection("connected");
+        };
+        dc.onclose = () => logEvent("data_channel.close");
+        dc.onerror = () => setError("Realtime data channel error.");
+        dc.onmessage = (message) => {
+          try {
+            handleRealtimeEvent(JSON.parse(message.data));
+          } catch (err) {
+            logEvent("unparsed_message", {message: String(message.data).slice(0, 500), error: err.message});
+          }
+        };
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        setConnection("negotiating");
+        const sdpResponse = await fetch(currentSession.webrtc_url, {
+          method: "POST",
+          body: offer.sdp,
+          headers: {
+            "Authorization": `Bearer ${currentSession.client_secret.value}`,
+            "Content-Type": "application/sdp"
+          }
+        });
+        if (!sdpResponse.ok) {
+          throw new Error(`WebRTC negotiation failed with status ${sdpResponse.status}.`);
+        }
+        const answer = {type: "answer", sdp: await sdpResponse.text()};
+        await pc.setRemoteDescription(answer);
+        setToggleBtnEnd();
+        muteToggle.disabled = false;
+        updateMuteButton();
+        startTimer();
+      } catch (err) {
+        if (err && err.name === "NotAllowedError") {
+          setMic("denied");
+          setError("Microphone permission was denied.");
+        } else {
+          setError(err.message || "Failed to start browser voice session.");
+        }
+        await endSession();
+      } finally {
+        starting = false;
+        if (!pc) {
+          setToggleBtnStart();
+        }
+      }
+    }
+
+    async function endSession() {
+      stopTimer();
+      stateEls.duration.textContent = "00:00";
+      
+      if (transcriptTurns.size > 0 && !transcriptPanel.querySelector(".session-ended-marker:last-child")) {
+        const endedMarker = document.createElement("div");
+        endedMarker.className = "session-ended-marker";
+        endedMarker.textContent = "— Session ended —";
+        transcriptPanel.appendChild(endedMarker);
+        transcriptPanel.scrollTop = transcriptPanel.scrollHeight;
+      }
+
+      await stopAudioMeters();
+      setListening(false);
+      setSpeaking(false);
+      muted = false;
+      muteToggle.disabled = true;
+      updateMuteButton();
+      if (dc) {
+        try { dc.close(); } catch (_err) {}
+        dc = null;
+      }
+      if (pc) {
+        try { pc.close(); } catch (_err) {}
+        pc = null;
+      }
+      if (localStream) {
+        for (const track of localStream.getTracks()) track.stop();
+        localStream = null;
+      }
+      remoteAudio.pause();
+      remoteAudio.srcObject = null;
+      currentSession = null;
+      if (toolFlushTimer) {
+        window.clearTimeout(toolFlushTimer);
+        toolFlushTimer = null;
+      }
+      handledToolCalls.clear();
+      inFlightToolCalls.clear();
+      queuedRealtimeToolCalls.clear();
+      setConnection("idle");
+      setMic("unknown");
+      setToggleBtnStart();
+    }
+
+    /* ── Event Listeners ── */
+
+    sessionToggleBtn.addEventListener("click", () => {
+      if (pc || starting) {
+        endSession();
+      } else {
+        startSession();
+      }
+    });
+
+    muteToggle.addEventListener("click", () => {
+      if (!localStream) return;
+      muted = !muted;
+      for (const track of localStream.getAudioTracks()) {
+        track.enabled = !muted;
+      }
+      setMic(muted ? "muted" : "granted");
+      updateMuteButton();
+      refreshOrbState();
+    });
+
+    diagnosticsToggle.addEventListener("click", () => {
+      diagnosticsBody.classList.toggle("collapsed");
+      diagnosticsToggle.classList.toggle("collapsed");
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.target !== document.body) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        if (pc || starting) endSession();
+        else startSession();
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        if (!muteToggle.disabled) muteToggle.click();
+      }
+    });
+
+    window.addEventListener("beforeunload", () => {
+      if (meterFrame) window.cancelAnimationFrame(meterFrame);
+      detachMeter("mic");
+      detachMeter("remote");
+      if (localStream) {
+        for (const track of localStream.getTracks()) track.stop();
+      }
+      if (dc) dc.close();
+      if (pc) pc.close();
+    });
+
+    /* ── Init ── */
+
+    if (DASHBOARD_KEY) {
+      const link = document.getElementById("dashboard-link");
+      link.href = `/dashboard?key=${encodeURIComponent(DASHBOARD_KEY)}`;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError("This browser does not support microphone capture.");
+      sessionToggleBtn.disabled = true;
+    }
+    updateMuteButton();
+    setConnection("idle");
+    setMic("unknown");
+  </script>
+</body>
+</html>

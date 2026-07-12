@@ -1253,36 +1253,100 @@ def delete_booking(event_id: str, contact_phone: str, contact_name: str | None =
     Cancel the caller's appointment. Ownership is by phone number only (contact_name is
     accepted for logging/display but not used as an ownership gate — AI transcription
     produces name variants like 'Nano'/'Nena' that must not block the rightful caller).
-    Returns {"success": bool, "message": str}.
+    Returns {"success": bool, "message": str, "event_id": str | None}.
     """
     service, cal_id = _get_calendar_service()
     if not service or not cal_id:
-        return {"success": False, "message": "Booking is not configured."}
+        return {"success": False, "message": "Booking is not configured.", "event_id": None}
     event_id = (event_id or "").strip()
     if not event_id:
-        return {"success": False, "message": "Appointment not found."}
+        return {"success": False, "message": "Appointment not found.", "event_id": None}
     normalized = _normalize_phone(contact_phone)
     try:
         event = service.events().get(calendarId=cal_id, eventId=event_id).execute()
     except Exception as e:
         Log.error(f"delete_booking get event failed: {e}")
-        return {"success": False, "message": "Appointment not found."}
+        return {"success": False, "message": "Appointment not found.", "event_id": event_id}
     ep = event.get("extendedProperties") or {}
     priv = ep.get("private") if isinstance(ep, dict) else {}
     if not isinstance(priv, dict):
         priv = {}
     if priv.get("caller_phone") != normalized:
-        return {"success": False, "message": "You can only cancel your own appointment."}
+        return {
+            "success": False,
+            "message": "You can only cancel your own appointment.",
+            "event_id": event_id,
+        }
+    deleted_booking: dict[str, Any] = {
+        "event_id": event_id,
+        "summary": event.get("summary") or "Appointment",
+    }
+    start_obj = event.get("start") or {}
+    end_obj = event.get("end") or {}
+    start_dt_str = start_obj.get("dateTime") or start_obj.get("date")
+    end_dt_str = end_obj.get("dateTime") or end_obj.get("date") or ""
+    if start_dt_str:
+        try:
+            start_dt = datetime.fromisoformat((start_dt_str or "").replace("Z", "+00:00"))
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            end_dt = (
+                datetime.fromisoformat(end_dt_str.replace("Z", "+00:00"))
+                if end_dt_str
+                else start_dt + timedelta(minutes=_slot_duration_minutes())
+            )
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            event_tz_name = (
+                normalize_timezone_name(priv.get("appointment_timezone"))
+                or normalize_timezone_name(start_obj.get("timeZone"))
+                or _appointment_timezone(service, cal_id)
+            )
+            caller_tz = normalize_timezone_name(priv.get("caller_timezone"))
+            caller_tz_source = str(priv.get("caller_timezone_source") or "").strip() or "none"
+            deleted_booking.update(
+                _slot_payload(
+                    start_dt_utc=start_dt.astimezone(timezone.utc),
+                    end_dt_utc=end_dt.astimezone(timezone.utc),
+                    appointment_timezone=event_tz_name,
+                    caller_timezone=caller_tz,
+                    caller_timezone_source=caller_tz_source,
+                )
+            )
+        except (TypeError, ValueError):
+            deleted_booking["start"] = start_dt_str
+            if end_dt_str:
+                deleted_booking["end"] = end_dt_str
     # Ownership is by phone only. Name is NOT checked here because AI speech-to-text
     # routinely produces variants (e.g. Nano/Nena/Nana) for the same caller, which
     # would block legitimate owners. The phone from Twilio caller-ID is deterministic.
     try:
         service.events().delete(calendarId=cal_id, eventId=event_id).execute()
         invalidate_availability_cache(reason="delete_booking")
-        return {"success": True, "message": "Your appointment has been cancelled."}
+        remaining_bookings = list_my_bookings(normalized, contact_name)
+        remaining_summary = [
+            {
+                "event_id": item.get("event_id"),
+                "display": item.get("display"),
+                "summary": item.get("summary"),
+            }
+            for item in remaining_bookings[:5]
+        ]
+        return {
+            "success": True,
+            "message": "Your appointment has been cancelled.",
+            "event_id": event_id,
+            "deleted_booking": deleted_booking,
+            "remaining_booking_count": len(remaining_bookings),
+            "remaining_bookings": remaining_summary,
+        }
     except Exception as e:
         Log.error(f"delete_booking delete failed: {e}")
-        return {"success": False, "message": "We couldn't cancel the appointment. Our team will follow up."}
+        return {
+            "success": False,
+            "message": "We couldn't cancel the appointment. Our team will follow up.",
+            "event_id": event_id,
+        }
 
 
 def edit_booking(

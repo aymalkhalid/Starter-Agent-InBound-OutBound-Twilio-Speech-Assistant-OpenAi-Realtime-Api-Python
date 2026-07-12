@@ -7,6 +7,8 @@ from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from config import Config
+from voice_realtime.session_builder import TRANSPORT_TWILIO, build_realtime_session
+from voice_realtime.settings import EffectiveRealtimeSettings
 from services.log_utils import Log
 from services.timezone_utils import infer_timezone_from_phone, normalize_timezone_name
 
@@ -485,12 +487,18 @@ class OpenAIEventHandler:
         """Check if an event type should be logged."""
         return event_type in Config.LOG_EVENT_TYPES
     
+    # This function determines if the provided event dictionary indicates
+    # that OpenAI is outputting an audio segment (an audio delta).
+    # It returns True if the event's 'type' is 'response.output_audio.delta'
+    # and the event contains a 'delta' key, meaning OpenAI is sending a chunk of generated audio
+    # (i.e., OpenAI is actively outputting audio).
+    # Returns False otherwise.
     @staticmethod
     def is_audio_delta_event(event: Dict[str, Any]) -> bool:
-        """Check if event is an audio delta from OpenAI."""
+        """Check if event is an audio delta from OpenAI (i.e., OpenAI is outputting audio)."""
         return (event.get('type') == 'response.output_audio.delta' and 
                 'delta' in event)
-    
+         
     @staticmethod
     def is_speech_started_event(event: Dict[str, Any]) -> bool:
         """Check if event indicates user speech has started."""
@@ -681,6 +689,7 @@ class OpenAISessionManager:
                     "Confirm the appointment being cancelled, including its timezone when available. "
                     "This write action may take noticeable time; a short preamble in the same turn is appropriate after confirmation. "
                     "Do not say the appointment was cancelled until this tool succeeds. "
+                    "For multiple cancellations in one turn, wait for every delete_booking result and check success, event_id, and remaining_booking_count before saying all requested bookings are cancelled. "
                     "If they want to book a new time after cancelling, call get_availability again—do not reuse an old slot list from the conversation.\n\n"
                     "Preamble sample phrases:\n"
                     "- I'll cancel that appointment now.\n"
@@ -779,54 +788,25 @@ class OpenAISessionManager:
         - system_message_override: when set (e.g. outbound calls), uses this instead of Config.SYSTEM_MESSAGE.
         Tools list is built from config (webhook, booking).
         """
-        turn_detection: Dict[str, Any]
-        if Config.VAD_MODE == "semantic_vad":
-            turn_detection = {
-                "type": "semantic_vad",
-                "eagerness": Config.VAD_EAGERNESS,
-                "create_response": True,
-                "interrupt_response": True,
-            }
-        else:
-            turn_detection = {
-                "type": "server_vad",
-                "threshold": Config.VAD_THRESHOLD,
-                "silence_duration_ms": Config.VAD_SILENCE_DURATION_MS,
-                "prefix_padding_ms": Config.VAD_PREFIX_PADDING_MS,
-            }
-        audio_input: Dict[str, Any] = {
-            "format": {"type": "audio/pcmu"},
-            "turn_detection": turn_detection,
-        }
+        settings = EffectiveRealtimeSettings.from_config(Config)
+        input_transcription: Dict[str, Any] | None = None
         rt_tx_model = (getattr(Config, "REALTIME_INPUT_TRANSCRIPTION_MODEL", None) or "").strip()
         if rt_tx_model:
-            tx: Dict[str, Any] = {"model": rt_tx_model}
+            input_transcription = {"model": rt_tx_model}
             lang = getattr(Config, "REALTIME_INPUT_TRANSCRIPTION_LANGUAGE", None)
             if isinstance(lang, str) and lang.strip():
-                tx["language"] = lang.strip()
-            audio_input["transcription"] = tx
+                input_transcription["language"] = lang.strip()
         instructions = system_message_override or Config.SYSTEM_MESSAGE
         runtime_policy_hint = _booking_runtime_policy_hint()
         if runtime_policy_hint:
             instructions = f"{instructions}\n\n{runtime_policy_hint}"
-        session_payload: Dict[str, Any] = {
-            "type": "realtime",
-            "model": Config.OPENAI_REALTIME_MODEL,
-            "output_modalities": ["audio"],
-            "audio": {
-                "input": audio_input,
-                "output": {
-                    "format": {"type": "audio/pcmu"},
-                    "voice": Config.VOICE,
-                }
-            },
-            "instructions": instructions,
-            "tools": OpenAISessionManager._realtime_tools()
-        }
-        if (Config.OPENAI_REALTIME_MODEL or "").strip() == "gpt-realtime-2":
-            session_payload["reasoning"] = {
-                "effort": (getattr(Config, "REALTIME_REASONING_EFFORT", "low") or "low").strip().lower()
-            }
+        session_payload = build_realtime_session(
+            TRANSPORT_TWILIO,
+            settings,
+            instructions,
+            OpenAISessionManager._realtime_tools(),
+            input_transcription=input_transcription,
+        )
         # Do not add session.prompt.variables here: the Realtime API requires session.prompt.id
         # when using prompt (stored prompts). Caller number is passed via the initial conversation
         # item (create_initial_conversation_item) so the model still gets it.
@@ -2015,8 +1995,16 @@ class OpenAIService:
                             connection_manager.state.resolved_call_record_id = lead_id
                             connection_manager.state.resolved_business_lead_id = lead_id
                     task.add_done_callback(_remember_resolved_lead)
-            msg = result.get("message", "Done.") if isinstance(result, dict) else "Done."
-            await self._send_tool_result(connection_manager, call_id, msg)
+            if isinstance(result, dict):
+                output_payload = dict(result)
+            else:
+                output_payload = {"success": False, "message": "Cancellation did not return a structured result."}
+            output_payload.setdefault("action", "delete_booking")
+            output_payload.setdefault("event_id", args.get("event_id") or None)
+            output_payload.setdefault("success", False)
+            output_payload.setdefault("message", "Done.")
+            output_payload["contact_phone_provided"] = bool(del_phone)
+            await self._send_tool_result(connection_manager, call_id, json.dumps(output_payload))
             return True
 
         if name == 'edit_booking':

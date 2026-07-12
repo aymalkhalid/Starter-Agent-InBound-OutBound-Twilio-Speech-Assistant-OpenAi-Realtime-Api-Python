@@ -7,3 +7,9 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
 );
 
 COMMENT ON TABLE public.app_settings IS 'Optional runtime-safe voice-agent config overrides such as TRANSCRIPTION_MODEL, VOICE, ASSISTANT_* delivery controls, VAD, and booking settings. Do not store full prompts or industry profiles here.';
+
+-- Realtime voice/model settings are written atomically as one JSON string row:
+--   key = 'REALTIME_VOICE_SETTINGS'
+--   value = '{"OPENAI_REALTIME_MODEL":"gpt-realtime-2.1","VOICE":"marin",...}'
+-- Realtime voice/model keys are read from this grouped row. Other dashboard
+-- settings continue to use simple per-key rows.

@@ -124,6 +124,55 @@ def test_apply_overrides_normalizes_voice_and_prompt_control_text(monkeypatch):
     assert rebuild_calls == [True]
 
 
+def test_apply_overrides_validates_model_and_reasoning_rebuilds_prompt(monkeypatch):
+    rebuild_calls: list[bool] = []
+    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-2")
+    monkeypatch.setattr(Config, "REALTIME_REASONING_EFFORT", "low")
+    monkeypatch.setattr(Config, "ALLOW_UNREGISTERED_REALTIME_MODELS", False)
+    monkeypatch.setattr(dynamic_settings, "_rebuild_system_message", lambda: rebuild_calls.append(True))
+
+    dynamic_settings.apply_overrides_to_config(
+        {
+            "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
+            "REALTIME_REASONING_EFFORT": "high",
+        }
+    )
+
+    assert Config.OPENAI_REALTIME_MODEL == "gpt-realtime-2.1"
+    assert Config.REALTIME_REASONING_EFFORT == "high"
+    assert rebuild_calls == [True]
+
+
+def test_apply_overrides_rejects_unknown_realtime_model(monkeypatch):
+    rebuild_calls: list[bool] = []
+    monkeypatch.setattr(Config, "OPENAI_REALTIME_MODEL", "gpt-realtime-2")
+    monkeypatch.setattr(Config, "ALLOW_UNREGISTERED_REALTIME_MODELS", False)
+    monkeypatch.setattr(dynamic_settings, "_rebuild_system_message", lambda: rebuild_calls.append(True))
+
+    dynamic_settings.apply_overrides_to_config({"OPENAI_REALTIME_MODEL": "gpt-realtime-future"})
+
+    assert Config.OPENAI_REALTIME_MODEL == "gpt-realtime-2"
+    assert rebuild_calls == []
+
+
+def test_apply_overrides_normalizes_voice_profile_and_vad(monkeypatch):
+    monkeypatch.setattr(Config, "VOICE_PROFILE", "custom")
+    monkeypatch.setattr(Config, "VAD_MODE", "server_vad")
+    monkeypatch.setattr(Config, "VAD_EAGERNESS", "auto")
+
+    dynamic_settings.apply_overrides_to_config(
+        {
+            "VOICE_PROFILE": "Professional Phone",
+            "VAD_MODE": "bad-mode",
+            "VAD_EAGERNESS": "bad-eagerness",
+        }
+    )
+
+    assert Config.VOICE_PROFILE == "professional_phone"
+    assert Config.VAD_MODE == "server_vad"
+    assert Config.VAD_EAGERNESS == "auto"
+
+
 def test_apply_overrides_updates_booking_availability_settings(monkeypatch):
     """Booking availability controls should apply to Config and sync to env for worker-local services."""
     monkeypatch.setattr(Config, "BOOKING_SLOT_DURATION_MINUTES", 60)
