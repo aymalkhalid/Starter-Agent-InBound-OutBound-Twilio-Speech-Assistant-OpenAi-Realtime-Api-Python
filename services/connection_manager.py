@@ -1,5 +1,6 @@
 import json
 import asyncio
+import inspect
 import websockets
 from typing import Optional, Callable, Awaitable, Any
 from fastapi import WebSocket
@@ -8,6 +9,19 @@ from fastapi.websockets import WebSocketDisconnect
 from config import Config
 from services.log_utils import Log
 from services.twilio_service import TwilioService
+
+
+def _websockets_connect_header_kwargs(headers: dict[str, str]) -> dict[str, dict[str, str]]:
+    """Return the correct header kwarg for the installed websockets client API."""
+    try:
+        parameters = inspect.signature(websockets.connect).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if "additional_headers" in parameters:
+        return {"additional_headers": headers}
+    if "extra_headers" in parameters:
+        return {"extra_headers": headers}
+    return {"additional_headers": headers}
 
 
 class ConnectionState:
@@ -94,13 +108,14 @@ class WebSocketConnectionManager:
     async def connect_to_openai(self) -> None:
         """Establish connection to OpenAI WebSocket API."""
         try:
+            url = Config.get_openai_websocket_url()
             self.openai_ws = await websockets.connect(
-                Config.get_openai_websocket_url(),
-                additional_headers=Config.get_openai_headers()
+                url,
+                **_websockets_connect_header_kwargs(Config.get_openai_headers()),
             )
             self._is_connected = True
             Log.event("OpenAI WebSocket Connected", {
-                "url": Config.get_openai_websocket_url()
+                "url": url
             })
         except Exception as e:
             Log.error(f"Failed to connect to OpenAI: {e}")

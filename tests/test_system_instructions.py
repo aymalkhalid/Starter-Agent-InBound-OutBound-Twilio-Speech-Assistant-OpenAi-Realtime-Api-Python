@@ -386,10 +386,17 @@ def test_build_reasoning_effort_instruction_for_gpt_realtime_2():
     assert "multi-step rescheduling" in text
 
 
-def test_build_reasoning_effort_instruction_omitted_for_older_model():
+def test_build_reasoning_effort_instruction_for_gpt_realtime_2_1():
     from config import _build_reasoning_effort_instruction
 
-    assert _build_reasoning_effort_instruction("gpt-realtime-1.5", "low") == ""
+    text = _build_reasoning_effort_instruction("gpt-realtime-2.1", "high")
+    assert "Session API reasoning effort is `high`" in text
+
+
+def test_build_reasoning_effort_instruction_omitted_for_mini():
+    from config import _build_reasoning_effort_instruction
+
+    assert _build_reasoning_effort_instruction("gpt-realtime-2.1-mini", "low") == ""
 
 
 def test_rebuild_system_message_includes_reasoning_effort_for_realtime_2(monkeypatch):

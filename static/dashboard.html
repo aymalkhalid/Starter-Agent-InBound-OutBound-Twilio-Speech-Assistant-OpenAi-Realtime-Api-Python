@@ -2506,6 +2506,17 @@
             </svg>
             Outbound
           </button>
+          <a href="/dashboard/voice-lab" id="voice-lab-link" class="btn-settings" aria-label="Open Voice Lab">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2v20" />
+              <path d="M8 7v10" />
+              <path d="M16 7v10" />
+              <path d="M4 11v2" />
+              <path d="M20 11v2" />
+            </svg>
+            Voice Lab
+          </a>
           <button type="button" id="settings-btn" class="btn-settings" aria-label="Open app settings">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2659,12 +2670,9 @@
                     name="TRANSCRIPT_ENHANCEMENT_ENABLED" /> Transcript enhancement (manual button)</label></div>
               <div class="field"><label for="setting-OPENAI_REALTIME_MODEL">Realtime model</label><select
                   id="setting-OPENAI_REALTIME_MODEL" name="OPENAI_REALTIME_MODEL">
-                  <option value="gpt-realtime-2">gpt-realtime-2</option>
-                  <option value="gpt-realtime">gpt-realtime</option>
-                  <option value="gpt-realtime-1.5">gpt-realtime-1.5</option>
-                  <option value="gpt-realtime-mini">gpt-realtime-mini</option>
-                  <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
-                  <option value="gpt-4o-mini-realtime-preview">gpt-4o-mini-realtime-preview</option>
+                  <option value="gpt-realtime-2.1">GPT-Realtime-2.1</option>
+                  <option value="gpt-realtime-2">GPT-Realtime-2</option>
+                  <option value="gpt-realtime-2.1-mini">GPT-Realtime-2.1 Mini</option>
                 </select></div>
               <div class="field"><label for="setting-REALTIME_REASONING_EFFORT">Realtime reasoning effort</label><select
                   id="setting-REALTIME_REASONING_EFFORT" name="REALTIME_REASONING_EFFORT">
@@ -2705,6 +2713,13 @@
                   <option value="verse">verse</option>
                   <option value="marin">marin</option>
                   <option value="cedar">cedar</option>
+                </select></div>
+              <div class="field"><label for="setting-VOICE_PROFILE">Voice profile</label><select
+                  id="setting-VOICE_PROFILE" name="VOICE_PROFILE">
+                  <option value="custom">custom</option>
+                  <option value="quality">quality</option>
+                  <option value="professional_phone">professional phone</option>
+                  <option value="cost_optimized">cost optimized</option>
                 </select></div>
               <div class="field"><label for="setting-ASSISTANT_LANGUAGE">Default language</label><input type="text"
                   id="setting-ASSISTANT_LANGUAGE" name="ASSISTANT_LANGUAGE" placeholder="English" /></div>
@@ -3012,6 +3027,10 @@
     window.DASHBOARD_KEY = "__DASHBOARD_KEY_PLACEHOLDER__";
     window.DASHBOARD_TIMEZONE = "__DASHBOARD_TIMEZONE_PLACEHOLDER__";
     (function () {
+      var voiceLabLink = document.getElementById("voice-lab-link");
+      if (voiceLabLink && window.DASHBOARD_KEY) {
+        voiceLabLink.href = "/dashboard/voice-lab?key=" + encodeURIComponent(window.DASHBOARD_KEY);
+      }
       var tz = window.DASHBOARD_TIMEZONE || "America/Los_Angeles";
       var footerEl = document.getElementById("footer-timezone");
       if (footerEl) footerEl.textContent = tz;
@@ -4043,10 +4062,17 @@
       else if (document.getElementById("modal").classList.contains("open")) requestCloseModal();
     });
 
-    function buildSettingsUrl() {
-      var base = "/settings";
+    var realtimeSettingsOptions = null;
+    function buildDashboardApiUrl(path) {
+      var base = path;
       if (window.DASHBOARD_KEY) base += "?key=" + encodeURIComponent(window.DASHBOARD_KEY);
       return base;
+    }
+    function buildSettingsUrl() {
+      return buildDashboardApiUrl("/settings");
+    }
+    function buildRealtimeOptionsUrl() {
+      return buildDashboardApiUrl("/api/realtime/options");
     }
     function buildSettingsHeaders() {
       var h = { "Content-Type": "application/json" };
@@ -4065,8 +4091,61 @@
       if (serverBlock) serverBlock.classList.toggle("hidden", !isServerVad);
       if (semanticBlock) semanticBlock.classList.toggle("hidden", isServerVad);
     }
+    function setSelectOptions(selectId, items, selectedValue) {
+      var el = document.getElementById(selectId);
+      if (!el || !items || !items.length) return;
+      var current = selectedValue != null ? String(selectedValue) : el.value;
+      el.innerHTML = "";
+      items.forEach(function (item) {
+        var opt = document.createElement("option");
+        opt.value = item.value;
+        opt.textContent = item.label;
+        el.appendChild(opt);
+      });
+      if (current) el.value = current;
+      if (el.value !== current && items.some(function (item) { return item.value === current; })) el.value = current;
+    }
+    function applyRealtimeOptions(options, currentSettings) {
+      if (!options) return;
+      realtimeSettingsOptions = options;
+      setSelectOptions("setting-OPENAI_REALTIME_MODEL", (options.models || []).map(function (model) {
+        return { value: model.id, label: model.display_name || model.id };
+      }), currentSettings && currentSettings.OPENAI_REALTIME_MODEL);
+      setSelectOptions("setting-VOICE", (options.voices || []).map(function (voice) {
+        return { value: voice.id, label: voice.display_name || voice.id };
+      }), currentSettings && currentSettings.VOICE);
+      setSelectOptions("setting-VOICE_PROFILE", [{ value: "custom", label: "custom" }].concat((options.presets || []).map(function (preset) {
+        return { value: preset.id, label: preset.display_name || preset.id };
+      })), currentSettings && currentSettings.VOICE_PROFILE);
+      setSelectOptions("setting-VAD_MODE", (options.vad_modes || []).map(function (mode) {
+        return { value: mode, label: mode };
+      }), currentSettings && currentSettings.VAD_MODE);
+      setSelectOptions("setting-VAD_EAGERNESS", (options.vad_eagerness || []).map(function (eagerness) {
+        return { value: eagerness, label: eagerness };
+      }), currentSettings && currentSettings.VAD_EAGERNESS);
+      setSelectOptions("setting-REALTIME_REASONING_EFFORT", (options.reasoning_efforts || []).map(function (effort) {
+        return { value: effort, label: effort };
+      }), currentSettings && currentSettings.REALTIME_REASONING_EFFORT);
+      updateReasoningControlState();
+    }
+    function selectedRealtimeModelMeta() {
+      var modelEl = document.getElementById("setting-OPENAI_REALTIME_MODEL");
+      var selected = modelEl ? modelEl.value : "";
+      var models = (realtimeSettingsOptions && realtimeSettingsOptions.models) || [];
+      for (var i = 0; i < models.length; i += 1) {
+        if (models[i].id === selected) return models[i];
+      }
+      return null;
+    }
+    function updateReasoningControlState() {
+      var reasoningEl = document.getElementById("setting-REALTIME_REASONING_EFFORT");
+      if (!reasoningEl) return;
+      var modelMeta = selectedRealtimeModelMeta();
+      var supported = !modelMeta || modelMeta.supports_reasoning_effort === true;
+      reasoningEl.disabled = !supported;
+    }
     function populateSettingsForm(data) {
-      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE", "VAD_EAGERNESS"];
+      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "VOICE_PROFILE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE", "VAD_EAGERNESS"];
       keys.forEach(function (key) {
         var el = document.getElementById("setting-" + key) || document.querySelector("[name=\"" + key + "\"]");
         if (!el) return;
@@ -4074,10 +4153,11 @@
         if (el.type === "checkbox") el.checked = val === true || val === "true" || val === "1" || val === 1;
         else el.value = val != null ? String(val) : "";
       });
+      updateReasoningControlState();
       updateVadFieldsVisibility();
     }
     function collectSettingsForm() {
-      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE"];
+      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "VOICE_PROFILE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE"];
       var vadModeEl = document.getElementById("setting-VAD_MODE");
       var isServerVad = vadModeEl && (vadModeEl.value || "").toLowerCase() === "server_vad";
       if (isServerVad) keys.push("VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS");
@@ -4086,6 +4166,7 @@
       keys.forEach(function (key) {
         var el = document.getElementById("setting-" + key) || document.querySelector("[name=\"" + key + "\"]");
         if (!el) return;
+        if (key === "REALTIME_REASONING_EFFORT" && el.disabled) return;
         if (el.type === "checkbox") payload[key] = el.checked;
         else if (el.type === "number") payload[key] = el.value === "" ? null : (el.value.indexOf(".") >= 0 ? parseFloat(el.value) : parseInt(el.value, 10));
         else payload[key] = el.value.trim();
@@ -4100,17 +4181,25 @@
       modal.classList.add("open");
       loadStatus.textContent = "Loading…";
       loadStatus.className = "status";
+      loadStatus.style.display = "block";
       form.style.display = "none";
       footer.style.display = "none";
       var settingsUrl = buildSettingsUrl();
       var headers = buildSettingsHeaders();
       var opts = { headers: headers, credentials: "include" };
-      fetch(settingsUrl, opts)
+      var optionsReq = fetch(buildRealtimeOptionsUrl(), opts)
         .then(function (res) { if (!res.ok) throw new Error(res.statusText || res.status); return res.json(); })
-        .then(function (data) {
+        .catch(function () { return null; });
+      var settingsReq = fetch(settingsUrl, opts)
+        .then(function (res) { if (!res.ok) throw new Error(res.statusText || res.status); return res.json(); });
+      Promise.all([optionsReq, settingsReq])
+        .then(function (results) {
+          var options = results[0];
+          var data = results[1];
           loadStatus.style.display = "none";
           form.style.display = "grid";
           footer.style.display = "flex";
+          applyRealtimeOptions(options, data);
           populateSettingsForm(data);
           document.getElementById("settings-save-status").textContent = "Changes apply to new calls.";
           document.getElementById("settings-save-status").className = "status";
@@ -4122,6 +4211,7 @@
     }
     document.getElementById("settings-btn").addEventListener("click", openSettingsModal);
     document.getElementById("setting-VAD_MODE").addEventListener("change", updateVadFieldsVisibility);
+    document.getElementById("setting-OPENAI_REALTIME_MODEL").addEventListener("change", updateReasoningControlState);
     document.getElementById("settings-modal-close").addEventListener("click", closeSettingsModal);
     document.getElementById("settings-cancel-btn").addEventListener("click", closeSettingsModal);
     document.getElementById("settings-modal").addEventListener("click", function (e) {

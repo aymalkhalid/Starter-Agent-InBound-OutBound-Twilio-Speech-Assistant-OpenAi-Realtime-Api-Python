@@ -4,6 +4,22 @@ from typing import List
 from urllib.parse import quote
 from dotenv import load_dotenv
 
+from voice_realtime.models import (
+    DEFAULT_REALTIME_MODEL,
+    normalize_reasoning_effort,
+    realtime_model_supports_reasoning_effort,
+    validate_realtime_model,
+)
+from voice_realtime.settings import (
+    DEFAULT_REALTIME_VOICE,
+    SUPPORTED_REALTIME_VOICES,
+    EffectiveRealtimeSettings,
+    normalize_realtime_voice,
+    normalize_vad_eagerness,
+    normalize_vad_mode,
+    normalize_voice_profile,
+)
+
 # Load .env from the directory containing this file (project root), so config works regardless of cwd
 _env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=_env_path)
@@ -24,25 +40,9 @@ load_dotenv(dotenv_path=_env_path)
 # VOICE: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar
 # For best quality / most human-like, OpenAI recommends: marin or cedar
 
-DEFAULT_REALTIME_VOICE = "cedar"
-SUPPORTED_REALTIME_VOICES = {
-    "alloy",
-    "ash",
-    "ballad",
-    "coral",
-    "echo",
-    "sage",
-    "shimmer",
-    "verse",
-    "marin",
-    "cedar",
-}
-
-
 def _normalize_realtime_voice(raw: str | None) -> str:
     """Return a supported OpenAI Realtime voice id."""
-    voice = (raw or DEFAULT_REALTIME_VOICE).strip().lower()
-    return voice if voice in SUPPORTED_REALTIME_VOICES else DEFAULT_REALTIME_VOICE
+    return normalize_realtime_voice(raw, DEFAULT_REALTIME_VOICE)
 
 
 def _sanitize_prompt_control(raw: str | None, default: str, max_length: int = 64) -> str:
@@ -258,12 +258,14 @@ def _build_reasoning_effort_instruction(
     model: str | None,
     effort: str | None,
 ) -> str:
-    """Inject Realtime 2 reasoning-effort guidance tied to REALTIME_REASONING_EFFORT."""
-    model_name = (model or "gpt-realtime-2").strip()
-    level = (effort or "low").strip().lower()
-    if level not in {"minimal", "low", "medium", "high", "xhigh"}:
-        level = "low"
-    if model_name != "gpt-realtime-2":
+    """Inject reasoning-effort guidance only when the model supports it."""
+    model_name = (model or DEFAULT_REALTIME_MODEL).strip()
+    level = normalize_reasoning_effort(effort)
+    allow_unregistered = bool(getattr(Config, "ALLOW_UNREGISTERED_REALTIME_MODELS", False))
+    if not realtime_model_supports_reasoning_effort(
+        model_name,
+        allow_unregistered=allow_unregistered,
+    ):
         return ""
     return (
         "## Reasoning effort\n"
@@ -321,38 +323,42 @@ def _build_tools_text() -> str:
     return "\n".join(f"- {name}" for name in names)
 
 
-def build_system_message() -> str:
+def build_system_message_for_settings(settings: EffectiveRealtimeSettings) -> str:
     from system_instructions import render_system_instructions
 
     return render_system_instructions(
         company_name=Config.COMPANY_NAME,
         agent_name=Config.AGENT_NAME,
         delivery_instruction=_build_delivery_instruction(
-            Config.ASSISTANT_TONE,
-            Config.ASSISTANT_WARMTH,
-            Config.ASSISTANT_EXPRESSIVENESS,
-            Config.ASSISTANT_PACING,
+            settings.tone,
+            settings.warmth,
+            settings.expressiveness,
+            settings.pacing,
         ),
         language_instruction=_build_language_instruction(
-            Config.ASSISTANT_LANGUAGE,
+            settings.language,
             Config.LANGUAGE_SWITCH_POLICY,
         ),
         accent_instruction=_build_accent_instruction(
-            Config.ASSISTANT_LANGUAGE,
-            Config.ASSISTANT_ACCENT,
-            Config.ASSISTANT_ACCENT_STRENGTH,
+            settings.language,
+            settings.accent,
+            settings.accent_strength,
         ),
         call_record_instruction=_build_call_record_instruction(),
         booking_instruction=_build_booking_instruction(),
         transfer_instruction=_build_transfer_instruction(),
         reasoning_effort_instruction=_build_reasoning_effort_instruction(
-            Config.OPENAI_REALTIME_MODEL,
-            Config.REALTIME_REASONING_EFFORT,
+            settings.model,
+            settings.reasoning_effort,
         ),
         tools_availability_instruction=_build_tools_availability_instruction(),
         tools_text=_build_tools_text(),
         instructions_path=Config.SYSTEM_INSTRUCTIONS_PATH,
     )
+
+
+def build_system_message() -> str:
+    return build_system_message_for_settings(EffectiveRealtimeSettings.from_config(Config))
 
 
 class Config:
@@ -363,17 +369,20 @@ class Config:
     
     # OpenAI Configuration
     OPENAI_API_KEY: str = os.getenv('OPENAI_API_KEY')
-    # Realtime API model: gpt-realtime-2 | gpt-realtime | gpt-realtime-1.5 | gpt-4o-mini-realtime-preview (see platform.openai.com rate limits)
-    OPENAI_REALTIME_MODEL: str = (os.getenv('OPENAI_REALTIME_MODEL') or 'gpt-realtime-2').strip()
-    _REALTIME_REASONING_EFFORT_RAW: str = (os.getenv('REALTIME_REASONING_EFFORT') or 'low').strip().lower()
-    REALTIME_REASONING_EFFORT: str = (
-        _REALTIME_REASONING_EFFORT_RAW
-        if _REALTIME_REASONING_EFFORT_RAW in {'minimal', 'low', 'medium', 'high', 'xhigh'}
-        else 'low'
+    ALLOW_UNREGISTERED_REALTIME_MODELS: bool = (
+        os.getenv('ALLOW_UNREGISTERED_REALTIME_MODELS', 'false').strip().lower() in ('1', 'true', 'yes')
     )
+    # Realtime API model must be registered unless ALLOW_UNREGISTERED_REALTIME_MODELS=true.
+    OPENAI_REALTIME_MODEL: str = validate_realtime_model(
+        os.getenv('OPENAI_REALTIME_MODEL') or DEFAULT_REALTIME_MODEL,
+        allow_unregistered=ALLOW_UNREGISTERED_REALTIME_MODELS,
+    )
+    _REALTIME_REASONING_EFFORT_RAW: str = (os.getenv('REALTIME_REASONING_EFFORT') or 'low').strip().lower()
+    REALTIME_REASONING_EFFORT: str = normalize_reasoning_effort(_REALTIME_REASONING_EFFORT_RAW)
     # Legacy compatibility only. GA Realtime voice behavior is configured through session.update.
     TEMPERATURE: float = float(os.getenv('TEMPERATURE', 0.8))
     VOICE: str = _normalize_realtime_voice(os.getenv('VOICE', DEFAULT_REALTIME_VOICE))
+    VOICE_PROFILE: str = normalize_voice_profile(os.getenv('VOICE_PROFILE') or 'custom')
     ASSISTANT_TONE: str = _sanitize_prompt_control(os.getenv('ASSISTANT_TONE'), 'warm professional', 80)
     ASSISTANT_WARMTH: str = _normalize_warmth(os.getenv('ASSISTANT_WARMTH') or 'warm')
     ASSISTANT_EXPRESSIVENESS: str = _normalize_expressiveness(os.getenv('ASSISTANT_EXPRESSIVENESS') or 'balanced')
@@ -458,6 +467,22 @@ class Config:
     # Dashboard auth: superadmin-defined users only (no signup). Format: user1:pass1,user2:pass2 (avoid : and , in passwords).
     # When set, /dashboard and /dashboard API routes require login or ?key=<password> / X-Dashboard-Key. Any user's password is valid for API key auth.
     DASHBOARD_USERS: str | None = (os.getenv('DASHBOARD_USERS') or "").strip() or None
+    # Browser Voice Lab: high-fidelity WebRTC testing. Requires DASHBOARD_USERS so
+    # short-lived browser credentials cannot be minted from an unprotected dashboard.
+    BROWSER_VOICE_LAB_ENABLED: bool = (
+        os.getenv('BROWSER_VOICE_LAB_ENABLED', 'true').strip().lower() in ('1', 'true', 'yes')
+    )
+    BROWSER_VOICE_LAB_SESSION_TTL_SECONDS: int = int(os.getenv('BROWSER_VOICE_LAB_SESSION_TTL_SECONDS', 600))
+    BROWSER_VOICE_LAB_MAX_SESSIONS_PER_MINUTE: int = int(os.getenv('BROWSER_VOICE_LAB_MAX_SESSIONS_PER_MINUTE', 6))
+    BROWSER_VOICE_LAB_MAX_ACTIVE_SESSIONS: int = int(os.getenv('BROWSER_VOICE_LAB_MAX_ACTIVE_SESSIONS', 3))
+    BROWSER_VOICE_LAB_TRANSCRIPTION_MODEL: str = (
+        os.getenv('BROWSER_VOICE_LAB_TRANSCRIPTION_MODEL', 'gpt-realtime-whisper').strip()
+        or 'gpt-realtime-whisper'
+    )
+    BROWSER_VOICE_LAB_TRANSCRIPTION_DELAY: str = (
+        os.getenv('BROWSER_VOICE_LAB_TRANSCRIPTION_DELAY', 'low').strip().lower()
+        or 'low'
+    )
 
     # Whisper transcription for recordings (faster-whisper). Model: tiny|base|small|medium|large-v3|distil-large-v3; empty = disabled. Default tiny for lower RAM/CPU (Cloud Run credits).
     TRANSCRIPTION_MODEL: str = (os.getenv('TRANSCRIPTION_MODEL') or "tiny").strip().lower()
@@ -559,6 +584,10 @@ class Config:
         """
         if not cls.OPENAI_API_KEY:
             raise ValueError('Missing the OpenAI API key. Please set it in the .env file.')
+        validate_realtime_model(
+            cls.OPENAI_REALTIME_MODEL,
+            allow_unregistered=cls.ALLOW_UNREGISTERED_REALTIME_MODELS,
+        )
     
     @classmethod
     def get_openai_websocket_url(cls) -> str:
@@ -568,7 +597,13 @@ class Config:
         Runtime behavior such as voice, audio format, tools, and reasoning
         effort is sent in session.update.
         """
-        model = quote((cls.OPENAI_REALTIME_MODEL or "gpt-realtime-2").strip(), safe="")
+        model = quote(
+            validate_realtime_model(
+                cls.OPENAI_REALTIME_MODEL or DEFAULT_REALTIME_MODEL,
+                allow_unregistered=cls.ALLOW_UNREGISTERED_REALTIME_MODELS,
+            ),
+            safe="",
+        )
         return (
             f"wss://api.openai.com/v1/realtime"
             f"?model={model}"
@@ -676,10 +711,8 @@ class Config:
 Config.validate_required_config()
 
 # Normalize VAD options (must match OpenAI API)
-if Config.VAD_MODE not in ('server_vad', 'semantic_vad'):
-    Config.VAD_MODE = 'server_vad'
-if Config.VAD_EAGERNESS not in ('low', 'medium', 'high', 'auto'):
-    Config.VAD_EAGERNESS = 'auto'
+Config.VAD_MODE = normalize_vad_mode(Config.VAD_MODE)
+Config.VAD_EAGERNESS = normalize_vad_eagerness(Config.VAD_EAGERNESS)
 
 def rebuild_system_message() -> None:
     """Rebuild Config.SYSTEM_MESSAGE from the main system-instructions file."""

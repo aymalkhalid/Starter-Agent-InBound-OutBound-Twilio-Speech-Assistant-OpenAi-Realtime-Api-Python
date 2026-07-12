@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.websockets import WebSocketDisconnect
 from starlette.requests import Request
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 from config import Config
 from services.connection_manager import WebSocketConnectionManager
+import services.connection_manager as connection_manager_module
 from services.twilio_service import TwilioService
 
 
@@ -174,3 +176,43 @@ def test_realtime_websocket_url_uses_model_only(monkeypatch):
     assert url == "wss://api.openai.com/v1/realtime?model=gpt-realtime-2"
     assert "temperature=" not in url
     assert "voice=" not in url
+
+
+def test_openai_websocket_headers_match_installed_websockets_api(monkeypatch):
+    async def legacy_connect(_uri, *, extra_headers=None):
+        return None
+
+    monkeypatch.setattr(connection_manager_module.websockets, "connect", legacy_connect)
+    assert connection_manager_module._websockets_connect_header_kwargs({"Authorization": "Bearer test"}) == {
+        "extra_headers": {"Authorization": "Bearer test"}
+    }
+
+    async def current_connect(_uri, *, additional_headers=None):
+        return None
+
+    monkeypatch.setattr(connection_manager_module.websockets, "connect", current_connect)
+    assert connection_manager_module._websockets_connect_header_kwargs({"Authorization": "Bearer test"}) == {
+        "additional_headers": {"Authorization": "Bearer test"}
+    }
+
+
+def test_connect_to_openai_uses_compatible_header_kwarg(monkeypatch):
+    captured: dict = {}
+
+    async def legacy_connect(uri, *, extra_headers=None):
+        captured["uri"] = uri
+        captured["extra_headers"] = extra_headers
+        return SimpleNamespace(close=lambda: None)
+
+    monkeypatch.setattr(connection_manager_module.websockets, "connect", legacy_connect)
+    monkeypatch.setattr(Config, "get_openai_websocket_url", classmethod(lambda cls: "wss://api.openai.test/realtime"))
+    monkeypatch.setattr(Config, "get_openai_headers", classmethod(lambda cls: {"Authorization": "Bearer test"}))
+
+    manager = WebSocketConnectionManager(_FakeTwilioWebSocket([]))
+    asyncio.run(manager.connect_to_openai())
+
+    assert captured == {
+        "uri": "wss://api.openai.test/realtime",
+        "extra_headers": {"Authorization": "Bearer test"},
+    }
+    assert manager._is_connected is True

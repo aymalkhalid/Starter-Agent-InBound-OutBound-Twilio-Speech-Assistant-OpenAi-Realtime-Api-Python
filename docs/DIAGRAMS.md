@@ -207,7 +207,7 @@ flowchart LR
 
 Injected placeholders include: `{agent_name}`, `{company_name}`, `{delivery_instruction}`, `{language_instruction}`, `{accent_instruction}`, `{reasoning_effort_instruction}`, `{tools_availability_instruction}`, `{call_record_instruction}`, `{booking_instruction}`, `{transfer_instruction}`.
 
-For `gpt-realtime-2`, `REALTIME_REASONING_EFFORT` is set on the session payload.
+For registry-supported reasoning Realtime models, `REALTIME_REASONING_EFFORT` is set on the session payload.
 
 ---
 
@@ -442,7 +442,7 @@ flowchart TB
 | Setting | Effect |
 | --- | --- |
 | `OPENAI_API_KEY` | Required — authenticates OpenAI Realtime WebSocket |
-| `OPENAI_REALTIME_MODEL=gpt-realtime-2` | Adds `reasoning.effort` to session payload |
+| `OPENAI_REALTIME_MODEL` with a registry model that supports configurable effort | Adds `reasoning.effort` to session payload |
 | `REALTIME_SESSION_RENEW_SECONDS` | Preemptive session reconnect (default 3300 s) |
 | `CALL_RECORD_BACKEND=supabase` | Enables `save_call_record` + dashboard |
 | Google Calendar + booking env | Enables five booking tools |

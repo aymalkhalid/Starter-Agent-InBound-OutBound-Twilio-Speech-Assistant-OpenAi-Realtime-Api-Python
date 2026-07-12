@@ -185,6 +185,7 @@ def test_delete_booking_missing_event_id():
     """delete_booking with empty event_id returns failure."""
     r = delete_booking("", "1234567890")
     assert isinstance(r, dict) and r.get("success") is False
+    assert r.get("event_id") is None
     assert "message" in r
     assert "not found" in r.get("message", "").lower() or "not configured" in r.get("message", "").lower()
 

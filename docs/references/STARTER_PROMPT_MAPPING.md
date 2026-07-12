@@ -13,7 +13,7 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | --- | --- | --- |
 | Role and Objective | `# Role and Objective` | Generic business voice agent scope |
 | Conversation Flow | `# Conversation Flow` | Lightweight intake; not a full state machine |
-| Reasoning | `# Reasoning`, `{reasoning_effort_instruction}` | OpenAI when/when-not rules; API effort injected for gpt-realtime-2 |
+| Reasoning | `# Reasoning`, `{reasoning_effort_instruction}` | OpenAI when/when-not rules; API effort injected for registry-supported Realtime reasoning models |
 | Personality and Tone | `# Personality and Tone`, `{delivery_instruction}` | Short phone-friendly style plus env-controlled tone, warmth, expressiveness, and pacing |
 | Language | `{language_instruction}` | English-primary by default; optional multilingual via `LANGUAGE_SWITCH_POLICY` |
 | Accent | `{accent_instruction}` | English delivery with configurable accent; separate from language |
@@ -41,7 +41,7 @@ This maps the starter's main system prompt to sections in [openai-realtime-model
 | Write-action confirmation | Prompt: confirm before side-effect tools |
 | Timezone-aware booking payloads | `services/google_calendar_booking_service.py`, `services/openai_service.py`; details in [Booking timezones](../BOOKING_TIMEZONES.md) |
 | Dashboard booking projection | `services/openai_service.py`, `services/webhook_service.py`, `static/dashboard.html` carry `confirmed_slot`, `calendar_event_link`, and `metadata.appointments[]` after successful booking |
-| Reasoning effort | `REALTIME_REASONING_EFFORT` in `config.py`; sent in session for `gpt-realtime-2`; mirrored in prompt |
+| Reasoning effort | `REALTIME_REASONING_EFFORT` in `config.py`; sent in session only when the selected registry model supports configurable effort; mirrored in prompt |
 | Delivery controls | `ASSISTANT_TONE`, `ASSISTANT_WARMTH`, `ASSISTANT_EXPRESSIVENESS`, `ASSISTANT_PACING` in `config.py`; optional Supabase/dashboard overrides |
 
 ## Gaps to consider when extending
