@@ -356,7 +356,10 @@ def apply_overrides_to_config(overrides: dict[str, str]) -> None:
     for key in (
         "AGENT_NAME",
         "COMPANY_NAME",
+        "CALL_RECORDING_ENABLED",
         "BOOKING_ENABLED",
+        "HUMAN_TRANSFER_ENABLED",
+        "HUMAN_TRANSFER_DIAL_NUMBER",
         "ASSISTANT_TONE",
         "ASSISTANT_WARMTH",
         "ASSISTANT_EXPRESSIVENESS",

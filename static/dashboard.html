@@ -2128,6 +2128,105 @@
       font-size: 0.74rem;
     }
 
+    .ob-profile-panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 0.85rem 1rem;
+      box-shadow: var(--shadow);
+    }
+
+    .ob-profile-panel summary {
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      list-style-position: inside;
+    }
+
+    .ob-profile-panel summary::marker {
+      color: var(--muted);
+    }
+
+    .ob-profile-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.8rem;
+    }
+
+    .ob-profile-field label {
+      display: block;
+      font-size: 0.76rem;
+      font-weight: 650;
+      color: var(--muted);
+      margin-bottom: 0.22rem;
+    }
+
+    .ob-profile-field input,
+    .ob-profile-field textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 0.82rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0.48rem 0.58rem;
+    }
+
+    .ob-profile-field textarea {
+      min-height: 86px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+
+    .ob-profile-field input:focus,
+    .ob-profile-field textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .ob-profile-field.wide {
+      grid-column: span 2;
+    }
+
+    .ob-profile-field.full {
+      grid-column: 1 / -1;
+    }
+
+    .ob-profile-preview {
+      margin-top: 0.75rem;
+      padding-top: 0.7rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .ob-profile-preview strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    @media (max-width: 1000px) {
+      .ob-profile-grid {
+        grid-template-columns: repeat(2, minmax(160px, 1fr));
+      }
+    }
+
+    @media (max-width: 700px) {
+      .ob-profile-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .ob-profile-field.wide,
+      .ob-profile-field.full {
+        grid-column: auto;
+      }
+    }
+
     .ob-script-panel {
       display: flex;
       flex-direction: column;
@@ -2771,6 +2870,8 @@
             </div>
             <div class="settings-section">
               <h3>Booking</h3>
+              <div class="field"><label class="chk"><input type="checkbox" id="setting-BOOKING_ENABLED"
+                    name="BOOKING_ENABLED" /> Booking enabled</label></div>
               <div class="field"><label for="setting-GOOGLE_CALENDAR_ID">Google Calendar ID</label><input type="text"
                   id="setting-GOOGLE_CALENDAR_ID" name="GOOGLE_CALENDAR_ID"
                   placeholder="e.g. @group.calendar.google.com or primary" /></div>
@@ -2903,6 +3004,69 @@
                     id="ob-concurrency" value="1" min="1" max="10" /></div>
               </div>
               <div class="ob-type-details" id="ob-type-details" aria-live="polite"></div>
+              <details class="ob-profile-panel" id="ob-profile-panel" open>
+                <summary>Client &amp; Offer Profile</summary>
+                <div class="ob-profile-grid">
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-company-name">Company name</label>
+                    <input type="text" id="ob-profile-company-name" class="ob-profile-input"
+                      placeholder="The Vitality & Aesthetics Institute" />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-company-short">Company short name</label>
+                    <input type="text" id="ob-profile-company-short" class="ob-profile-input" placeholder="TVAAI" />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-agent-name">Agent name</label>
+                    <input type="text" id="ob-profile-agent-name" class="ob-profile-input" placeholder="Sophia" />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-office-phone">Office phone</label>
+                    <input type="text" id="ob-profile-office-phone" class="ob-profile-input"
+                      placeholder="(832) 962-4455" />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-agent-calling-number">Agent calling number</label>
+                    <input type="text" id="ob-profile-agent-calling-number" class="ob-profile-input"
+                      placeholder="+18329624455" />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-website">Website</label>
+                    <input type="text" id="ob-profile-website" class="ob-profile-input" placeholder="tvaai.com" />
+                  </div>
+                  <div class="ob-profile-field wide">
+                    <label for="ob-profile-address">Address</label>
+                    <input type="text" id="ob-profile-address" class="ob-profile-input"
+                      placeholder="2603 Augusta Dr. Suite 1450, Houston, TX 77057" />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-hours">Business hours</label>
+                    <input type="text" id="ob-profile-hours" class="ob-profile-input"
+                      placeholder="Mon-Fri, 9:00 AM-5:00 PM" />
+                  </div>
+                  <div class="ob-profile-field full">
+                    <label for="ob-profile-map-link">Map link</label>
+                    <input type="text" id="ob-profile-map-link" class="ob-profile-input"
+                      placeholder="https://maps.app.goo.gl/..." />
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-current-offers">Current offers</label>
+                    <textarea id="ob-profile-current-offers" class="ob-profile-input"
+                      placeholder="Lip filler&#10;Botox&#10;T-Shape"></textarea>
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-offer-routing">Offer routing notes</label>
+                    <textarea id="ob-profile-offer-routing" class="ob-profile-input"
+                      placeholder="Lip filler leads go to consultation booking. Botox leads go to wrinkle reset path."></textarea>
+                  </div>
+                  <div class="ob-profile-field">
+                    <label for="ob-profile-offer-notes">Offer details</label>
+                    <textarea id="ob-profile-offer-notes" class="ob-profile-input"
+                      placeholder="Pricing, exclusions, consent language, or clinic-specific notes."></textarea>
+                  </div>
+                </div>
+                <div class="ob-profile-preview" id="ob-profile-preview" aria-live="polite"></div>
+              </details>
               <div class="ob-script-panel">
                 <div class="ob-script-header">
                   <label for="ob-message">Message / script</label>
@@ -4145,7 +4309,7 @@
       reasoningEl.disabled = !supported;
     }
     function populateSettingsForm(data) {
-      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "VOICE_PROFILE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE", "VAD_EAGERNESS"];
+      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "VOICE_PROFILE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "BOOKING_ENABLED", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE", "VAD_EAGERNESS"];
       keys.forEach(function (key) {
         var el = document.getElementById("setting-" + key) || document.querySelector("[name=\"" + key + "\"]");
         if (!el) return;
@@ -4157,7 +4321,7 @@
       updateVadFieldsVisibility();
     }
     function collectSettingsForm() {
-      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "VOICE_PROFILE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE"];
+      var keys = ["TRANSCRIPTION_MODEL", "TRANSCRIPT_ENHANCEMENT_ENABLED", "OPENAI_REALTIME_MODEL", "REALTIME_REASONING_EFFORT", "TRANSCRIPT_ENHANCEMENT_MODEL", "CALL_RECORDING_ENABLED", "VOICE", "VOICE_PROFILE", "ASSISTANT_TONE", "ASSISTANT_WARMTH", "ASSISTANT_EXPRESSIVENESS", "ASSISTANT_PACING", "ASSISTANT_LANGUAGE", "LANGUAGE_SWITCH_POLICY", "ASSISTANT_ACCENT", "ASSISTANT_ACCENT_STRENGTH", "COMPANY_NAME", "AGENT_NAME", "HUMAN_TRANSFER_ENABLED", "HUMAN_TRANSFER_DIAL_NUMBER", "BOOKING_ENABLED", "GOOGLE_CALENDAR_ID", "TIMEZONE", "BOOKING_SLOT_DURATION_MINUTES", "BUSINESS_APPOINTMENT_OPENING_TIME", "BUSINESS_APPOINTMENT_CLOSING_TIME", "AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY", "BOOKING_DAYS_ENABLED", "VAD_PREFIX_PADDING_MS", "VAD_DEBOUNCE_AFTER_OUTGOING_MS", "VAD_INTERRUPTION_CONFIRM_MS", "VAD_MODE"];
       var vadModeEl = document.getElementById("setting-VAD_MODE");
       var isServerVad = vadModeEl && (vadModeEl.value || "").toLowerCase() === "server_vad";
       if (isServerVad) keys.push("VAD_THRESHOLD", "VAD_SILENCE_DURATION_MS");
@@ -4419,6 +4583,132 @@
         obTypeDetails.classList.add("open");
       }
 
+      var CAMPAIGN_PROFILE_FIELDS = [
+        ["company_name", "ob-profile-company-name"],
+        ["company_short", "ob-profile-company-short"],
+        ["agent_name", "ob-profile-agent-name"],
+        ["office_phone", "ob-profile-office-phone"],
+        ["agent_calling_number", "ob-profile-agent-calling-number"],
+        ["website", "ob-profile-website"],
+        ["address", "ob-profile-address"],
+        ["map_link", "ob-profile-map-link"],
+        ["hours", "ob-profile-hours"]
+      ];
+      var CAMPAIGN_OFFER_FIELDS = [
+        ["offer_routing", "ob-profile-offer-routing"],
+        ["offer_notes", "ob-profile-offer-notes"]
+      ];
+
+      function metadataObject(raw) {
+        if (!raw) return {};
+        if (typeof raw === "object" && !Array.isArray(raw)) return Object.assign({}, raw);
+        try {
+          var parsed = JSON.parse(String(raw));
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function readObInput(id) {
+        var el = document.getElementById(id);
+        return el ? String(el.value || "").trim() : "";
+      }
+
+      function setObInput(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.value = value == null ? "" : String(value);
+      }
+
+      function compactObject(obj) {
+        var out = {};
+        Object.keys(obj || {}).forEach(function (key) {
+          var value = obj[key];
+          if (value == null) return;
+          if (typeof value === "string" && !value.trim()) return;
+          if (Array.isArray(value) && !value.length) return;
+          if (typeof value === "object" && !Array.isArray(value) && !Object.keys(value).length) return;
+          out[key] = value;
+        });
+        return out;
+      }
+
+      function offersToLines(value) {
+        if (!value) return "";
+        if (Array.isArray(value)) {
+          return value.map(function (item) {
+            if (item && typeof item === "object") return item.name || item.offer || item.title || "";
+            return item == null ? "" : String(item);
+          }).filter(Boolean).join("\n");
+        }
+        return String(value)
+          .split(/\s+\|\s+|\r?\n/)
+          .map(function (item) { return item.trim(); })
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      function linesToOffers(value) {
+        return String(value || "")
+          .split(/\r?\n/)
+          .map(function (item) { return item.trim(); })
+          .filter(Boolean);
+      }
+
+      function applyCampaignMetadataToForm(metadata) {
+        var meta = metadataObject(metadata);
+        var profile = metadataObject(meta.business_profile);
+        var offers = metadataObject(meta.offer_config);
+        CAMPAIGN_PROFILE_FIELDS.forEach(function (pair) {
+          setObInput(pair[1], profile[pair[0]] || meta[pair[0]] || "");
+        });
+        CAMPAIGN_OFFER_FIELDS.forEach(function (pair) {
+          setObInput(pair[1], offers[pair[0]] || meta[pair[0]] || "");
+        });
+        setObInput("ob-profile-current-offers", offersToLines(offers.current_offers || meta.current_offers || ""));
+        updateCampaignMetadataPreview();
+      }
+
+      function collectCampaignMetadataFromForm() {
+        var metadata = metadataObject(currentCampaign && currentCampaign.metadata);
+        var profile = metadataObject(metadata.business_profile);
+        var offers = metadataObject(metadata.offer_config);
+
+        CAMPAIGN_PROFILE_FIELDS.forEach(function (pair) {
+          delete profile[pair[0]];
+          var value = readObInput(pair[1]);
+          if (value) profile[pair[0]] = value;
+        });
+        CAMPAIGN_OFFER_FIELDS.forEach(function (pair) {
+          delete offers[pair[0]];
+          var value = readObInput(pair[1]);
+          if (value) offers[pair[0]] = value;
+        });
+        delete offers.current_offers;
+        var currentOffers = linesToOffers(readObInput("ob-profile-current-offers"));
+        if (currentOffers.length) offers.current_offers = currentOffers;
+
+        profile = compactObject(profile);
+        offers = compactObject(offers);
+        delete metadata.business_profile;
+        delete metadata.offer_config;
+        if (Object.keys(profile).length) metadata.business_profile = profile;
+        if (Object.keys(offers).length) metadata.offer_config = offers;
+        return compactObject(metadata);
+      }
+
+      function updateCampaignMetadataPreview() {
+        var preview = document.getElementById("ob-profile-preview");
+        if (!preview) return;
+        var company = readObInput("ob-profile-company-name") || "No company set";
+        var agent = readObInput("ob-profile-agent-name") || "No agent set";
+        var offers = linesToOffers(readObInput("ob-profile-current-offers"));
+        var offerText = offers.length ? offers.join(", ") : "No offers set";
+        preview.innerHTML =
+          '<strong>Call identity:</strong> ' + esc(agent) + ' from ' + esc(company) +
+          '<br><strong>Current offers:</strong> ' + esc(offerText);
+      }
+
       function applyMessageScriptForCampaign(campaign, options) {
         options = options || {};
         var messageEl = document.getElementById("ob-message");
@@ -4491,6 +4781,7 @@
         }
         applyMessageScriptForCampaign(campaign);
         updateCampaignTypeDetails();
+        applyCampaignMetadataToForm(campaign ? campaign.metadata : {});
 
         var isRunning = campaign && campaign.status === "running";
         var isPaused = campaign && campaign.status === "paused";
@@ -4810,6 +5101,7 @@
           campaign_type: obTypeSelect.value,
           message_template: document.getElementById("ob-message").value,
           concurrency: parseInt(document.getElementById("ob-concurrency").value, 10) || 1,
+          metadata: collectCampaignMetadataFromForm(),
         };
         obFooterStatus.textContent = "Saving…";
         var method = currentCampaignId ? "PATCH" : "POST";
@@ -4945,6 +5237,9 @@
       document.getElementById("ob-back-to-list").addEventListener("click", showListView);
       document.getElementById("ob-add-row").addEventListener("click", function () { addContactRow("", "", "", "", "", ""); });
       document.getElementById("ob-file-upload").addEventListener("change", handleFileUpload);
+      document.querySelectorAll(".ob-profile-input").forEach(function (el) {
+        el.addEventListener("input", updateCampaignMetadataPreview);
+      });
       obSaveBtn.addEventListener("click", saveDraft);
       obStartBtn.addEventListener("click", startCampaign);
       obPauseBtn.addEventListener("click", pauseCampaign);
