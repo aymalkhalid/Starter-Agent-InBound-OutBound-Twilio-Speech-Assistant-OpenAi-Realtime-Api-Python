@@ -124,6 +124,208 @@ def _first_custom_field(custom_fields: dict[str, Any], aliases: tuple[str, ...])
     return ""
 
 
+def _first_raw_field(mapping: dict[str, Any], aliases: tuple[str, ...]) -> Any:
+    alias_keys = {_normalized_field_key(alias) for alias in aliases}
+    for key, value in mapping.items():
+        if _normalized_field_key(key) in alias_keys:
+            return value
+    return None
+
+
+_CAMPAIGN_BUSINESS_PROFILE_ALIASES: dict[str, tuple[str, ...]] = {
+    "company_name": ("company_name", "business_name", "clinic_name", "practice_name"),
+    "company_short": ("company_short", "company_short_name", "short_name", "brand_short"),
+    "agent_name": ("agent_name", "assistant_name", "voice_agent_name", "receptionist_name"),
+    "accent": ("accent", "assistant_accent", "agent_accent"),
+    "office_phone": ("office_phone", "business_phone", "clinic_phone", "front_desk_phone", "frontdesk_phone"),
+    "agent_calling_number": ("agent_calling_number", "calling_number", "caller_id", "twilio_number"),
+    "website": ("website", "site", "url"),
+    "address": ("address", "business_address", "clinic_address", "location_address"),
+    "map_link": ("map_link", "maps_link", "google_maps_link", "directions_link"),
+    "hours": ("hours", "business_hours", "office_hours"),
+}
+
+_CAMPAIGN_OFFER_CONFIG_ALIASES: dict[str, tuple[str, ...]] = {
+    "current_offers": ("current_offers", "offers", "offer_list", "active_offers", "services"),
+    "offer_routing": ("offer_routing", "routing", "offer_paths", "routing_rules"),
+    "offer_notes": ("offer_notes", "offers_notes", "offer_details", "promotion_notes"),
+}
+
+_CAMPAIGN_METADATA_CONTAINER_ALIASES = (
+    "business_profile",
+    "business",
+    "client_profile",
+    "client",
+    "organization",
+)
+
+_OFFER_METADATA_CONTAINER_ALIASES = (
+    "offer_config",
+    "offers_config",
+    "offer_settings",
+    "offers",
+)
+
+_METADATA_SECRET_KEYWORDS = (
+    "apikey",
+    "api_key",
+    "authorization",
+    "clientsecret",
+    "client_secret",
+    "dashboardkey",
+    "dashboard_key",
+    "password",
+    "secret",
+    "token",
+)
+
+_CAMPAIGN_OWNED_PROMPT_KEYS = {
+    _normalized_field_key(alias)
+    for aliases in (
+        tuple(_CAMPAIGN_BUSINESS_PROFILE_ALIASES.values())
+        + tuple(_CAMPAIGN_OFFER_CONFIG_ALIASES.values())
+    )
+    for alias in aliases
+}
+
+
+def _without_secret_like_metadata(value: Any) -> Any:
+    """Drop obvious secret-like metadata keys before campaign config is stored."""
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            normalized_key = _normalized_field_key(key)
+            if any(keyword in normalized_key for keyword in _METADATA_SECRET_KEYWORDS):
+                continue
+            nested = _without_secret_like_metadata(item)
+            if nested is not None:
+                cleaned[str(key).strip()] = nested
+        return cleaned
+    if isinstance(value, list):
+        return [
+            item
+            for item in (_without_secret_like_metadata(entry) for entry in value)
+            if item is not None
+        ]
+    return value
+
+
+def _metadata_sources(metadata: dict[str, Any], aliases: tuple[str, ...]) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    for alias in aliases:
+        value = _first_raw_field(metadata, (alias,))
+        coerced = _coerce_mapping(value)
+        if coerced:
+            sources.append(coerced)
+    sources.append(metadata)
+    return sources
+
+
+def _format_offer_value(value: Any) -> str:
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                name = _clean_prompt_value(
+                    item.get("name") or item.get("offer") or item.get("title"),
+                    max_length=120,
+                )
+                details = []
+                for key in ("description", "price", "duration", "notes", "routing"):
+                    detail = _clean_prompt_value(item.get(key), max_length=240)
+                    if detail:
+                        details.append(f"{key}: {detail}")
+                aliases = item.get("aliases")
+                if isinstance(aliases, list):
+                    alias_text = ", ".join(
+                        _clean_prompt_value(alias, max_length=80)
+                        for alias in aliases
+                        if _clean_prompt_value(alias, max_length=80)
+                    )
+                    if alias_text:
+                        details.append(f"aliases: {alias_text}")
+                if name or details:
+                    parts.append(f"{name}: {'; '.join(details)}" if name and details else name or "; ".join(details))
+            else:
+                text = _clean_prompt_value(item, max_length=240)
+                if text:
+                    parts.append(text)
+        return " | ".join(parts)
+    return _clean_prompt_value(value, max_length=2000)
+
+
+def normalize_campaign_metadata(metadata: Any) -> dict[str, Any]:
+    """
+    Normalize campaign-owned business and offer config for storage/rendering.
+
+    The metadata object may preserve non-secret custom keys, but the normalized
+    `business_profile` and `offer_config` blocks are what outbound prompt
+    rendering treats as authoritative.
+    """
+    raw = _coerce_mapping(metadata)
+    if not raw:
+        return {}
+    raw = _without_secret_like_metadata(raw)
+    if not isinstance(raw, dict):
+        return {}
+
+    normalized = dict(raw)
+
+    business_profile: dict[str, str] = {}
+    for source in _metadata_sources(raw, _CAMPAIGN_METADATA_CONTAINER_ALIASES):
+        for canonical, aliases in _CAMPAIGN_BUSINESS_PROFILE_ALIASES.items():
+            if business_profile.get(canonical):
+                continue
+            cleaned = _clean_prompt_value(_first_raw_field(source, aliases), max_length=1000)
+            if cleaned:
+                business_profile[canonical] = cleaned
+
+    offer_config: dict[str, str] = {}
+    for source in _metadata_sources(raw, _OFFER_METADATA_CONTAINER_ALIASES):
+        for canonical, aliases in _CAMPAIGN_OFFER_CONFIG_ALIASES.items():
+            if offer_config.get(canonical):
+                continue
+            raw_value = _first_raw_field(source, aliases)
+            cleaned = _format_offer_value(raw_value)
+            if cleaned:
+                offer_config[canonical] = cleaned
+
+    if business_profile:
+        normalized["business_profile"] = business_profile
+    if offer_config:
+        normalized["offer_config"] = offer_config
+    return normalized
+
+
+def _campaign_metadata_context(campaign: dict[str, Any]) -> dict[str, str]:
+    metadata = normalize_campaign_metadata(campaign.get("metadata") or {})
+    business_profile = metadata.get("business_profile") or {}
+    offer_config = metadata.get("offer_config") or {}
+    context: dict[str, str] = {}
+    if isinstance(business_profile, dict):
+        context.update(
+            {str(key): _clean_prompt_value(value, max_length=2000) for key, value in business_profile.items()}
+        )
+    if isinstance(offer_config, dict):
+        context.update(
+            {str(key): _clean_prompt_value(value, max_length=2000) for key, value in offer_config.items()}
+        )
+    return {key: value for key, value in context.items() if value}
+
+
+def _filter_contact_prompt_replacements(
+    custom_fields: dict[str, Any],
+    campaign_context: dict[str, str],
+) -> dict[str, Any]:
+    if not campaign_context:
+        return dict(custom_fields)
+    return {
+        key: value
+        for key, value in custom_fields.items()
+        if _normalized_field_key(key) not in _CAMPAIGN_OWNED_PROMPT_KEYS
+    }
+
+
 def get_contact_timezone_from_contact(contact: dict[str, Any] | None) -> str:
     """Return contact-provided timezone without falling back to business timezone."""
     if not isinstance(contact, dict):
@@ -356,8 +558,10 @@ def _build_outbound_contact_context(
     campaign: dict[str, Any],
     contact: dict[str, Any],
     custom_fields: dict[str, Any],
+    campaign_context: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Normalize outbound contact fields used by reusable prompts and templates."""
+    campaign_context = campaign_context or {}
     raw_name = _clean_prompt_value(contact.get("name"))
     custom_name = _first_custom_field(
         custom_fields,
@@ -399,17 +603,20 @@ def _build_outbound_contact_context(
         custom_fields,
         ("contact_timezone", "timezone", "time_zone", "tz"),
     )
-    callback_number = _first_custom_field(
-        custom_fields,
-        (
+    callback_aliases = ("callback_number",)
+    if not campaign_context:
+        callback_aliases = (
             "callback_number",
             "clinic_phone",
             "front_desk_phone",
             "frontdesk_phone",
             "office_phone",
             "business_phone",
-        ),
-    ) or _clean_prompt_value(os.getenv("HUMAN_TRANSFER_DIAL_NUMBER", ""))
+        )
+    callback_number = _first_custom_field(
+        custom_fields,
+        callback_aliases,
+    ) or campaign_context.get("office_phone", "") or _clean_prompt_value(os.getenv("HUMAN_TRANSFER_DIAL_NUMBER", ""))
     source_campaign = _first_custom_field(
         custom_fields,
         ("source_campaign", "campaign", "campaign_name", "source"),
@@ -429,6 +636,39 @@ def _build_outbound_contact_context(
         "callback_number": callback_number,
         "source_campaign": source_campaign,
     }
+
+
+def _format_campaign_business_context(context: dict[str, str]) -> str:
+    """Render campaign-owned business and offer context for outbound prompts."""
+    if not context:
+        return ""
+    field_order = (
+        "company_name",
+        "company_short",
+        "agent_name",
+        "accent",
+        "office_phone",
+        "agent_calling_number",
+        "website",
+        "address",
+        "map_link",
+        "hours",
+        "current_offers",
+        "offer_routing",
+        "offer_notes",
+    )
+    lines = [
+        "# Campaign Business Context",
+        "Use this campaign-owned context as authoritative. Do not let CRM lead fields override it.",
+    ]
+    for key in field_order:
+        value = context.get(key, "")
+        if value:
+            lines.append(f"- {key}: {value}")
+    for key, value in context.items():
+        if key not in field_order and value:
+            lines.append(f"- {key}: {value}")
+    return "\n".join(lines)
 
 
 def _format_outbound_contact_context(context: dict[str, str]) -> str:
@@ -537,6 +777,7 @@ def create_campaign_sync(
     campaign_type: str = "general",
     message_template: str = "",
     concurrency: int = 1,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Insert a new campaign row. Returns the inserted row dict or None on failure."""
     client = _get_supabase_client()
@@ -550,6 +791,9 @@ def create_campaign_sync(
         "concurrency": concurrency,
         "status": "draft",
     }
+    normalized_metadata = normalize_campaign_metadata(metadata or {})
+    if normalized_metadata:
+        row["metadata"] = normalized_metadata
     try:
         r = client.table(_campaigns_table()).insert(row).execute()
         data = (r.data or []) if hasattr(r, "data") else []
@@ -665,6 +909,8 @@ def update_campaign_sync(campaign_id: str, updates: dict[str, Any]) -> bool:
         return False
     if "concurrency" in filtered:
         filtered["concurrency"] = max(1, min(int(filtered["concurrency"]), Config.OUTBOUND_MAX_CONCURRENCY))
+    if "metadata" in filtered:
+        filtered["metadata"] = normalize_campaign_metadata(filtered["metadata"])
     try:
         client.table(_campaigns_table()).update(filtered).eq("id", campaign_id).execute()
         Log.info(f"Outbound campaign updated: {campaign_id}")
@@ -908,10 +1154,12 @@ def build_outbound_system_message(campaign_id: str, contact_id: str) -> str | No
     custom_fields = contact.get("custom_fields") or {}
     if not isinstance(custom_fields, dict):
         custom_fields = {}
+    campaign_context = _campaign_metadata_context(campaign)
     contact_context = _build_outbound_contact_context(
         campaign=campaign,
         contact=contact,
         custom_fields=custom_fields,
+        campaign_context=campaign_context,
     )
     replacements = {
         "contact_name": contact_context.get("contact_name") or "there",
@@ -919,14 +1167,26 @@ def build_outbound_system_message(campaign_id: str, contact_id: str) -> str | No
         "agent_name": agent_name,
         "receptionist_name": agent_name,
     }
-    replacements.update(custom_fields)
+    contact_replacements = _filter_contact_prompt_replacements(custom_fields, campaign_context)
+    replacements.update(contact_replacements)
+    replacements.update(campaign_context)
+    if campaign_context.get("agent_name"):
+        replacements["receptionist_name"] = campaign_context["agent_name"]
     replacements.update({key: value for key, value in contact_context.items() if value})
 
     result = template
     for key, value in replacements.items():
         result = result.replace("{" + key + "}", str(value))
 
-    result = result.rstrip() + "\n\n" + _format_outbound_contact_context(contact_context)
+    context_sections = [
+        section
+        for section in (
+            _format_campaign_business_context(campaign_context),
+            _format_outbound_contact_context(contact_context),
+        )
+        if section
+    ]
+    result = result.rstrip() + "\n\n" + "\n\n".join(context_sections)
 
     return _append_language_and_accent_policy(result)
 

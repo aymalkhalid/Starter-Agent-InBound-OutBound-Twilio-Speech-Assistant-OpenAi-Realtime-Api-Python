@@ -254,6 +254,211 @@ def test_outbound_system_message_appends_delivery_language_and_accent_policy(mon
     print("  PASS: outbound prompt appends language/accent policy")
 
 
+def test_outbound_system_message_uses_campaign_business_metadata_over_ghl_fields(monkeypatch):
+    """Campaign metadata should own business identity while GHL owns lead context."""
+    import services.outbound_service as outbound_service
+
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=self.rows)
+
+    class FakeClient:
+        def table(self, name):
+            if name == "outbound_campaigns":
+                return FakeQuery([
+                    {
+                        "id": "campaign-1",
+                        "name": "TVAAI GHL Manual Test",
+                        "campaign_type": "aesthetic_appointment_setter",
+                        "message_template": (
+                            "You are {agent_name} from {company_name}. "
+                            "Call about {lead_offer}. "
+                            "Use offers: {current_offers}. "
+                            "Office: {office_phone}. Website: {website}."
+                        ),
+                        "metadata": {
+                            "business_profile": {
+                                "company_name": "The Vitality & Aesthetics Institute",
+                                "company_short": "TVAAI",
+                                "agent_name": "Sophia",
+                                "office_phone": "(832) 962-4455",
+                                "website": "tvaai.com",
+                                "hours": "Mon-Fri, 9:00 AM-5:00 PM",
+                            },
+                            "offer_config": {
+                                "current_offers": [
+                                    {
+                                        "name": "Lip filler",
+                                        "description": "Consultation path for lip filler leads",
+                                        "aliases": ["filler", "lip augmentation"],
+                                    },
+                                    {"name": "Botox", "description": "Wrinkle reset consultation path"},
+                                ]
+                            },
+                        },
+                    }
+                ])
+            if name == "outbound_contacts":
+                return FakeQuery([
+                    {
+                        "id": "contact-1",
+                        "name": "Aymal Khalid Khan",
+                        "phone": "+12185953862",
+                        "email": "send2aymal@gmail.com",
+                        "custom_fields": {
+                            "lead_offer": "Lip filler",
+                            "contact_timezone": "Asia/Karachi",
+                            "company_name": "Wrong CRM Clinic",
+                            "agent_name": "Wrong Agent",
+                            "office_phone": "000-000-0000",
+                            "website": "wrong.example",
+                        },
+                    }
+                ])
+            return FakeQuery([])
+
+    monkeypatch.setattr(outbound_service, "_get_supabase_client", lambda: FakeClient())
+    monkeypatch.setattr(outbound_service.Config, "SUPABASE_OUTBOUND_CAMPAIGNS_TABLE", "outbound_campaigns")
+    monkeypatch.setattr(outbound_service.Config, "SUPABASE_OUTBOUND_CONTACTS_TABLE", "outbound_contacts")
+    monkeypatch.setenv("COMPANY_NAME", "Env Fallback Clinic")
+
+    result = outbound_service.build_outbound_system_message("campaign-1", "contact-1")
+
+    assert result is not None
+    assert "You are Sophia from The Vitality & Aesthetics Institute." in result
+    assert "Call about Lip filler." in result
+    assert "Office: (832) 962-4455." in result
+    assert "Website: tvaai.com." in result
+    assert "Lip filler" in result
+    assert "Botox" in result
+    assert "# Campaign Business Context" in result
+    assert "- current_offers:" in result
+    assert "# Outbound Contact Context" in result
+    assert "- lead_offer: Lip filler" in result
+    assert "Wrong CRM Clinic" not in result
+    assert "Wrong Agent" not in result
+    assert "000-000-0000" not in result
+    assert "wrong.example" not in result
+    print("  PASS: campaign metadata owns business identity over GHL fields")
+
+
+def test_outbound_system_message_keeps_legacy_contact_business_fields_without_campaign_metadata(monkeypatch):
+    """Legacy campaigns can still use business-like placeholders from contact custom fields."""
+    import services.outbound_service as outbound_service
+
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=self.rows)
+
+    class FakeClient:
+        def table(self, name):
+            if name == "outbound_campaigns":
+                return FakeQuery([
+                    {
+                        "id": "campaign-1",
+                        "name": "Legacy CRM Payload Test",
+                        "campaign_type": "general",
+                        "message_template": "Call for {company_name} at {office_phone} about {lead_offer}.",
+                    }
+                ])
+            if name == "outbound_contacts":
+                return FakeQuery([
+                    {
+                        "id": "contact-1",
+                        "name": "Jordan",
+                        "custom_fields": {
+                            "company_name": "Legacy CRM Clinic",
+                            "office_phone": "111-222-3333",
+                            "lead_offer": "Botox",
+                        },
+                    }
+                ])
+            return FakeQuery([])
+
+    monkeypatch.setattr(outbound_service, "_get_supabase_client", lambda: FakeClient())
+    monkeypatch.setattr(outbound_service.Config, "SUPABASE_OUTBOUND_CAMPAIGNS_TABLE", "outbound_campaigns")
+    monkeypatch.setattr(outbound_service.Config, "SUPABASE_OUTBOUND_CONTACTS_TABLE", "outbound_contacts")
+    monkeypatch.setenv("COMPANY_NAME", "Env Clinic")
+
+    result = outbound_service.build_outbound_system_message("campaign-1", "contact-1")
+
+    assert result is not None
+    assert "Call for Legacy CRM Clinic at 111-222-3333 about Botox." in result
+    assert "- callback_number: 111-222-3333" in result
+    print("  PASS: legacy contact business placeholders still work without campaign metadata")
+
+
+def test_create_campaign_stores_normalized_metadata_without_secrets(monkeypatch):
+    """Campaign creation should store normalized business/offer config and skip secrets."""
+    import services.outbound_service as outbound_service
+
+    captured = {}
+
+    class FakeTable:
+        def insert(self, row):
+            captured["row"] = row
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[dict(captured["row"], id="campaign-1")])
+
+    class FakeClient:
+        def table(self, name):
+            assert name == "outbound_campaigns"
+            return FakeTable()
+
+    monkeypatch.setattr(outbound_service, "_get_supabase_client", lambda: FakeClient())
+    monkeypatch.setattr(outbound_service.Config, "SUPABASE_OUTBOUND_CAMPAIGNS_TABLE", "outbound_campaigns")
+    monkeypatch.setattr(outbound_service.Config, "OUTBOUND_MAX_CONCURRENCY", 5)
+
+    campaign = outbound_service.create_campaign_sync(
+        "TVAAI Test",
+        "aesthetic_appointment_setter",
+        "Call {contact_name}.",
+        2,
+        {
+            "business_profile": {
+                "company_name": "The Vitality & Aesthetics Institute",
+                "office_phone": "(832) 962-4455",
+            },
+            "offer_config": {"current_offers": ["Lip filler", "Botox"]},
+            "api_key": "should-not-store",
+        },
+    )
+
+    assert campaign is not None
+    metadata = captured["row"]["metadata"]
+    assert metadata["business_profile"]["company_name"] == "The Vitality & Aesthetics Institute"
+    assert metadata["business_profile"]["office_phone"] == "(832) 962-4455"
+    assert metadata["offer_config"]["current_offers"] == "Lip filler | Botox"
+    assert "api_key" not in metadata
+    print("  PASS: campaign metadata normalized on create")
+
+
 def test_outbound_system_message_does_not_duplicate_existing_delivery_language_accent_sections(monkeypatch):
     """Campaign templates with explicit delivery/language/accent sections keep one copy."""
     import services.outbound_service as outbound_service
@@ -836,6 +1041,33 @@ def test_dashboard_outbound_script_panel_layout():
     assert "function applyMessageScriptForCampaign(" in html
     assert "function getTypeDefaultScript(" in html
     print("  PASS: dashboard outbound script panel layout")
+
+
+def test_dashboard_outbound_campaign_metadata_editor():
+    """Outbound editor exposes campaign-owned business and offer metadata fields."""
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+    for field_id in (
+        "ob-profile-company-name",
+        "ob-profile-company-short",
+        "ob-profile-agent-name",
+        "ob-profile-office-phone",
+        "ob-profile-agent-calling-number",
+        "ob-profile-website",
+        "ob-profile-address",
+        "ob-profile-map-link",
+        "ob-profile-hours",
+        "ob-profile-current-offers",
+        "ob-profile-offer-routing",
+        "ob-profile-offer-notes",
+        "ob-profile-preview",
+    ):
+        assert f'id="{field_id}"' in html
+    assert "Client &amp; Offer Profile" in html
+    assert "function applyCampaignMetadataToForm(" in html
+    assert "function collectCampaignMetadataFromForm(" in html
+    assert "metadata: collectCampaignMetadataFromForm()" in html
+    assert "current_offers" in html
+    print("  PASS: dashboard outbound campaign metadata editor")
 
 
 def test_dashboard_outbound_sample_type_guidance():

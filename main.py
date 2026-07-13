@@ -11,6 +11,7 @@ import websockets
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, quote
 from pathlib import Path
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, WebSocket, Request, Query, Header, HTTPException, Body, Form
@@ -52,6 +53,41 @@ app = FastAPI(lifespan=lifespan)
 # Dashboard session cookie (login page auth when DASHBOARD_USERS is set)
 DASHBOARD_SESSION_COOKIE = "dashboard_session"
 DASHBOARD_SESSION_MAX_AGE_SEC = 24 * 3600  # 24 hours
+
+_SENSITIVE_LOG_KEYWORDS = (
+    "authorization",
+    "api_key",
+    "apikey",
+    "auth",
+    "calltoken",
+    "client_secret",
+    "dashboard_key",
+    "key",
+    "password",
+    "refresh_token",
+    "secret",
+    "token",
+    "x-dashboard-key",
+)
+
+
+def _sanitize_json_for_log(value: Any) -> Any:
+    """Redact secret-like fields while preserving webhook payload shape."""
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            key_text = str(key)
+            key_lower = key_text.lower()
+            if any(keyword in key_lower for keyword in _SENSITIVE_LOG_KEYWORDS):
+                sanitized[key_text] = "(redacted)"
+            else:
+                sanitized[key_text] = _sanitize_json_for_log(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_json_for_log(item) for item in value]
+    if isinstance(value, str) and len(value) > 2000:
+        return f"{value[:2000]}...(truncated)"
+    return value
 
 
 def _dashboard_session_create(signing_key: str, username: str) -> str:
@@ -894,8 +930,18 @@ async def create_outbound_campaign(
     campaign_type = (body.get("campaign_type") or "general").strip()
     message_template = (body.get("message_template") or "").strip()
     concurrency = max(1, min(int(body.get("concurrency") or 1), Config.OUTBOUND_MAX_CONCURRENCY))
+    metadata = body.get("metadata") or {}
+    if metadata and not isinstance(metadata, dict):
+        raise HTTPException(status_code=400, detail="Campaign metadata must be a JSON object")
     from services.outbound_service import create_campaign_sync
-    campaign = await asyncio.to_thread(create_campaign_sync, name, campaign_type, message_template, concurrency)
+    campaign = await asyncio.to_thread(
+        create_campaign_sync,
+        name,
+        campaign_type,
+        message_template,
+        concurrency,
+        metadata,
+    )
     if not campaign:
         raise HTTPException(status_code=500, detail="Failed to create campaign")
     return {"campaign": campaign}
@@ -992,6 +1038,14 @@ async def trigger_outbound_call_from_contact(
     External systems can POST one contact or lead to a campaign; the payload is inserted as an
     outbound contact and called immediately using that campaign's prompt.
     """
+    Log.event(
+        "Outbound trigger-call incoming JSON",
+        {
+            "campaign_id": campaign_id,
+            "client_host": request.client.host if request.client else None,
+            "payload": _sanitize_json_for_log(body),
+        },
+    )
     _require_dashboard_key(request=request, key=key, x_dashboard_key=x_dashboard_key)
     _require_outbound_enabled()
 

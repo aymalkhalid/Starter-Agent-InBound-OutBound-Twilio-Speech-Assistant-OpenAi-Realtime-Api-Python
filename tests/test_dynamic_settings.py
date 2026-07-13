@@ -1,9 +1,12 @@
 """Focused tests for dynamic settings prompt controls."""
 
 import os
+from pathlib import Path
 
 from config import Config
 from services import dynamic_settings
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_apply_overrides_updates_language_accent_and_rebuilds_prompt(monkeypatch):
@@ -175,6 +178,7 @@ def test_apply_overrides_normalizes_voice_profile_and_vad(monkeypatch):
 
 def test_apply_overrides_updates_booking_availability_settings(monkeypatch):
     """Booking availability controls should apply to Config and sync to env for worker-local services."""
+    monkeypatch.setattr(Config, "BOOKING_ENABLED", False)
     monkeypatch.setattr(Config, "BOOKING_SLOT_DURATION_MINUTES", 60)
     monkeypatch.setattr(Config, "BUSINESS_APPOINTMENT_OPENING_TIME", "08:00")
     monkeypatch.setattr(Config, "BUSINESS_APPOINTMENT_CLOSING_TIME", "18:00")
@@ -184,6 +188,7 @@ def test_apply_overrides_updates_booking_availability_settings(monkeypatch):
 
     dynamic_settings.apply_overrides_to_config(
         {
+            "BOOKING_ENABLED": "true",
             "TIMEZONE": "America/Chicago",
             "BOOKING_SLOT_DURATION_MINUTES": "30",
             "BUSINESS_APPOINTMENT_OPENING_TIME": "09:00",
@@ -193,14 +198,26 @@ def test_apply_overrides_updates_booking_availability_settings(monkeypatch):
         }
     )
 
+    assert Config.BOOKING_ENABLED is True
     assert Config.BOOKING_SLOT_DURATION_MINUTES == 30
     assert Config.BUSINESS_APPOINTMENT_OPENING_TIME == "09:00"
     assert Config.BUSINESS_APPOINTMENT_CLOSING_TIME == "23:00"
     assert Config.AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY == 0
     assert Config.BOOKING_DAYS_ENABLED == "mon,tue,wed,thu,fri"
     assert Config.TIMEZONE == "America/Chicago"
+    assert os.environ["BOOKING_ENABLED"] == "True"
     assert os.environ["TIMEZONE"] == "America/Chicago"
     assert os.environ["AVAILABILITY_MAX_SLOTS_PER_BUCKET_PER_DAY"] == "0"
+
+
+def test_dashboard_settings_exposes_booking_enabled_toggle():
+    """Dashboard settings should let Supabase app_settings control booking capability."""
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+
+    assert 'id="setting-BOOKING_ENABLED"' in html
+    assert 'name="BOOKING_ENABLED"' in html
+    assert "Booking enabled" in html
+    assert '"BOOKING_ENABLED", "GOOGLE_CALENDAR_ID"' in html
 
 
 def test_dynamic_settings_do_not_include_prompt_profile_infrastructure():

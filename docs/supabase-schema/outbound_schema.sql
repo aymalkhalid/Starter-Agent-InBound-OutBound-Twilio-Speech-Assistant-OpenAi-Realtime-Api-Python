@@ -31,6 +31,7 @@ COMMENT ON COLUMN public.outbound_campaigns.campaign_type IS 'appointment_setter
 COMMENT ON COLUMN public.outbound_campaigns.message_template IS 'AI system prompt / script template with {contact_name}, {company_name}, etc.';
 COMMENT ON COLUMN public.outbound_campaigns.concurrency IS 'Max simultaneous outbound calls for this campaign.';
 COMMENT ON COLUMN public.outbound_campaigns.status IS 'draft | running | paused | completed';
+COMMENT ON COLUMN public.outbound_campaigns.metadata IS 'Optional campaign-owned JSON config. Supported keys include business_profile and offer_config so CRM webhooks can send lead-specific data only.';
 
 CREATE INDEX IF NOT EXISTS idx_outbound_campaigns_status     ON public.outbound_campaigns (status);
 CREATE INDEX IF NOT EXISTS idx_outbound_campaigns_created_at ON public.outbound_campaigns (created_at DESC);
